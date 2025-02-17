@@ -2,11 +2,12 @@
 /* prettier-ignore */
 
 import React from 'react';
-import { CssBaseline, ThemeProvider } from '@mui/material';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import theme from './styles/theme';
-import Login from './pages/Login';
-import Profile from './pages/Profile';
+import { CssBaseline, ThemeProvider } from "@mui/material";
+import { BrowserRouter as Router, Route } from "react-router-dom";
+import { Routes } from "react-router";
+import theme from "./styles/theme";
+import Login from "./pages/Login";
+import Profile from "./pages/Profile";
 
 const App: React.FC = () => {
   return (

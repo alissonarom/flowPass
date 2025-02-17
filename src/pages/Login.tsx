@@ -12,7 +12,7 @@ import {
   Box,
   Grid,
 } from "@mui/material";
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from "react-router-dom";
 
 const Login: React.FC = () => {
   const [cpf, setCpf] = useState("");
@@ -45,7 +45,7 @@ const Login: React.FC = () => {
     const isValid = validateCPF(cpf);
     setError(!isValid);
     if (isValid) {
-      navigate('/profile');
+      navigate("/profile");
     }
   };
 
@@ -66,9 +66,21 @@ const Login: React.FC = () => {
   return (
     <>
       {/* Barra superior */}
-      <AppBar position="static" sx={{ backgroundColor: "#26d07c", height: "65px", justifyContent: "center", paddingInline: 10 }}>
+      <AppBar
+        position="static"
+        sx={{
+          backgroundColor: "#26d07c",
+          height: "65px",
+          justifyContent: "center",
+          paddingInline: 10,
+        }}
+      >
         <Toolbar>
-          <img src="/logo-top-bar-bco.png" alt="Logo" style={{ width: "120px", height: "45px" }} />
+          <img
+            src="/logo-top-bar-bco.png"
+            alt="Logo"
+            style={{ width: "120px", height: "45px" }}
+          />
         </Toolbar>
       </AppBar>
 
@@ -83,20 +95,39 @@ const Login: React.FC = () => {
       >
         <Grid container spacing={2} alignItems="center">
           {/* Coluna 1: Typography */}
-          <Grid item xs={12} md={6} sx={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center" }}>
+          <Grid
+            item
+            xs={12}
+            md={6}
+            sx={{
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+          >
             <Typography variant="h4" gutterBottom>
               Digite o CPF para fazer o check-in
             </Typography>
           </Grid>
 
           {/* Coluna 2: Box com campo de CPF e botão */}
-          <Grid item xs={12} md={6} sx={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+          <Grid
+            item
+            xs={12}
+            md={6}
+            sx={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+            }}
+          >
             <Box
               sx={{
                 width: "70%",
                 border: "1px solid lightgray", // Borda cinza claro
                 borderRadius: "8px", // Cantos arredondados
-                padding: '32px', // Espaçamento interno
+                padding: "32px", // Espaçamento interno
               }}
             >
               <TextField
@@ -108,7 +139,7 @@ const Login: React.FC = () => {
                 error={error}
                 helperText={error ? "CPF inválido ou não encontrado." : ""}
               />
-              
+
               {/* Botão "Checar" dentro do Box */}
               <Button
                 variant="contained"
@@ -117,7 +148,7 @@ const Login: React.FC = () => {
                   marginTop: "20px",
                   "&:hover": { backgroundColor: "#1fa968" },
                   width: "60%", // Botão com largura total
-                  alignSelf: 'flex-start'
+                  alignSelf: "flex-start",
                 }}
                 disabled={cpf.length !== 14 || loading}
                 onClick={handleCheck}
@@ -128,10 +159,8 @@ const Login: React.FC = () => {
           </Grid>
         </Grid>
       </Container>
-
     </>
   );
 };
 
 export default Login;
-
