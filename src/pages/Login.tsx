@@ -48,6 +48,9 @@ const Login: React.FC = () => {
       navigate("/profile");
     }
   };
+  const handleLista = () => {
+    navigate("/CriarLista");
+  };
 
   const handleCpfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value.replace(/\D/g, ""); // Remove todos os caracteres não numéricos
@@ -69,7 +72,7 @@ const Login: React.FC = () => {
       <AppBar
         position="static"
         sx={{
-          backgroundColor: "#26d07c",
+          backgroundColor: "#00df81",
           height: "65px",
           justifyContent: "center",
           paddingInline: 10,
@@ -154,6 +157,20 @@ const Login: React.FC = () => {
                 onClick={handleCheck}
               >
                 {loading ? "Verificando..." : "Checar"}
+              </Button>
+
+              <Button
+                variant="contained"
+                sx={{
+                  backgroundColor: "#26d07c",
+                  marginTop: "20px",
+                  "&:hover": { backgroundColor: "#1fa968" },
+                  width: "60%", // Botão com largura total
+                  alignSelf: "flex-start",
+                }}
+                onClick={handleLista}
+              >
+                Criar Lista
               </Button>
             </Box>
           </Grid>

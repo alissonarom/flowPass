@@ -18,6 +18,9 @@ import {
   MenuItem,
   TextareaAutosize,
   Modal,
+  Avatar,
+  Select,
+  SelectChangeEvent,
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
@@ -60,6 +63,7 @@ const Profile: React.FC = () => {
   const [errors, setErrors] = useState(!gender);
   const [openModal, setOpenModal] = useState(false);
   const promotores = ["Promotor A", "Promotor B", "Promotor C", "Sem lista"];
+  const [suspensionTime, setSuspensionTime] = useState<string>("");
 
   const handleChange = (field: string, value: string) => {
     setProfileData({ ...profileData, [field]: value });
@@ -97,12 +101,17 @@ const Profile: React.FC = () => {
     handleCloseModal(); // Fecha o modal
   };
 
+  // Função para lidar com a seleção do tempo de suspensão
+  const handleSuspensionChange = (event: SelectChangeEvent<string>) => {
+    setSuspensionTime(event.target.value as string);
+  };
+
   return (
     <div style={{ backgroundColor: "#EDEDED" }}>
       <AppBar
         position="static"
         sx={{
-          backgroundColor: "#26d07c",
+          backgroundColor: "#00df81",
           height: "65px",
           justifyContent: "center",
         }}
@@ -121,27 +130,41 @@ const Profile: React.FC = () => {
       <Stack
         direction="row"
         sx={{
-          marging: "10px",
-          height: "55px",
+          marginTop: "24px !important",
           justifyContent: "center",
           backgroundColor: "#EDEDED",
           alignItems: "center",
-          gap: "10px",
+          gap: "24px",
         }}
       >
         {/* Chip dinâmico */}
         <Chip
           label={
-            lista == "Sem lista" || lista == ""
-              ? "O usuário não está numa lista"
-              : `LISTA: ${lista}`
+            profileData.profile == "Promotor"
+              ? `Promotor: ${profileData.name}`
+              : lista == "Sem lista" || lista == ""
+                ? "O usuário não está numa lista"
+                : `LISTA: ${lista}`
           }
-          color={lista == "Sem lista" || lista == "" ? "warning" : "primary"}
-          sx={{ width: "50%", justifyContent: "flex-start" }}
+          avatar={
+            profileData.profile == "Promotor" ? (
+              <Avatar src="./flowpass-favicon.png" />
+            ) : undefined
+          }
+          color={
+            profileData.profile == "Promotor"
+              ? "default"
+              : lista == "Sem lista" || lista == ""
+                ? "warning"
+                : "primary"
+          }
+          sx={{ width: "40%", justifyContent: "flex-start" }}
+          size="medium"
         />
 
         {/* Botão de adicionar (aparece apenas se a lista estiver vazia) */}
-        {lista == "Sem lista" || lista == "" ? (
+        {profileData.profile == "Promotor" ? undefined : lista == "Sem lista" ||
+          lista == "" ? (
           <IconButton
             onClick={handleOpenModal}
             sx={{
@@ -167,12 +190,35 @@ const Profile: React.FC = () => {
             Editar
           </Button>
         )}
-
+        {profileData.profile == "Promotor" && (
+          <Box
+            sx={{
+              flexDirection: "row",
+              display: "flex",
+              justifyContent: "center",
+            }}
+          >
+            <Typography
+              variant="h6"
+              gutterBottom
+              sx={{ display: "block", color: "#03624c" }}
+            >
+              R$
+            </Typography>
+            <Typography
+              variant="h3"
+              gutterBottom
+              sx={{ display: "block", color: "#03624c" }}
+            >
+              4,20
+            </Typography>
+          </Box>
+        )}
         {/* Modal para seleção de promotor */}
         <Modal open={openModal} onClose={handleCloseModal}>
           <Box sx={modalStyle}>
             <Typography variant="h6" gutterBottom>
-              Selecione um Promotor
+              Selecione uma Lista
             </Typography>
             <List>
               {promotores.map((promoter, index) => (
@@ -330,6 +376,26 @@ const Profile: React.FC = () => {
             }
             style={{ width: "100%", padding: "10px", marginTop: "10px" }}
           />
+          <Box sx={{ marginTop: "20px" }}>
+            <Typography variant="body1" gutterBottom>
+              Selecionar Tempo de Suspensão:
+            </Typography>
+            <Select
+              value={suspensionTime}
+              onChange={handleSuspensionChange}
+              displayEmpty
+              fullWidth
+              sx={{ marginBottom: "20px" }}
+            >
+              <MenuItem value="" disabled>
+                Selecione um tempo
+              </MenuItem>
+              <MenuItem value="15 dias">15 dias</MenuItem>
+              <MenuItem value="30 dias">30 dias</MenuItem>
+              <MenuItem value="3 meses">3 meses</MenuItem>
+              <MenuItem value="6 meses">6 meses</MenuItem>
+            </Select>
+          </Box>
         </Box>
 
         {/* Botão Salvar */}

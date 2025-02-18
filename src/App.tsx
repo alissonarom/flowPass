@@ -8,6 +8,7 @@ import { Routes } from "react-router";
 import theme from "./styles/theme";
 import Login from "./pages/Login";
 import Profile from "./pages/Profile";
+import CriarLista from "./pages/CriarLista";
 
 const App: React.FC = () => {
   return (
@@ -17,6 +18,7 @@ const App: React.FC = () => {
         <Routes>
           <Route path="/" element={<Login />} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/criarLista" element={<CriarLista />} />
         </Routes>
       </Router>
     </ThemeProvider>
