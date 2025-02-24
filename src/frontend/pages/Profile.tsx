@@ -107,7 +107,7 @@ const Profile: React.FC = () => {
   };
 
   return (
-    <div style={{ backgroundColor: "#EDEDED" }}>
+    <div style={{ backgroundColor: "#EDEDED", minHeight: "100vh" }}>
       <AppBar
         position="static"
         sx={{
@@ -226,6 +226,12 @@ const Profile: React.FC = () => {
                   component="li"
                   key={index}
                   onClick={() => handleSelectPromoter(promoter)}
+                  sx={{
+                    cursor: "pointer", // Cursor pointer para indicar que é clicável
+                    "&:hover": {
+                      backgroundColor: "#CAFFD2", // Cor de fundo ao passar o mouse
+                    },
+                  }}
                 >
                   <ListItemText primary={promoter} />
                 </ListItem>

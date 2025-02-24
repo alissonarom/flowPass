@@ -15,7 +15,11 @@
     "@types/jest": "^27.5.2",
     "@types/node": "^16.18.126",
     "@types/react-dom": "^19.0.3",
+    "axios": "^1.7.9",
+    "concurrently": "^9.1.2",
+    "cors": "^2.8.5",
     "date-fns": "2.29.3",
+    "mongoose": "^8.10.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-input-mask": "^2.0.4",
@@ -29,7 +33,9 @@
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "prettier": "prettier --write \"src/**/*.{js,jsx,ts,tsx,json,css,scss,md}\""
+    "prettier": "prettier --write \"src/**/*.{js,jsx,ts,tsx,json,css,scss,md}\"",
+    "dev": "concurrently \"yarn dev:backend\" \"yarn start\"",
+    "lint": "eslint src --ext .ts,.tsx"
   },
   "browserslist": {
     "production": [
@@ -44,7 +50,10 @@
     ]
   },
   "devDependencies": {
+    "@types/axios": "^0.14.4",
+    "@types/cors": "^2.8.17",
     "@types/estree": "^1.0.6",
+    "@types/mongoose": "^5.11.97",
     "@types/prop-types": "^15.7.14",
     "@types/react": "^19.0.10",
     "@types/react-input-mask": "^3.0.6",
@@ -54,5 +63,8 @@
     "eslint-plugin-prettier": "^5.2.3",
     "prettier": "^3.5.1",
     "vue-loader": "^17.4.2"
-  }
+  },
+  "engines": {
+  "node": "~20.x"
+}
 }

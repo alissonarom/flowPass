@@ -142,36 +142,46 @@ const Login: React.FC = () => {
                 error={error}
                 helperText={error ? "CPF inválido ou não encontrado." : ""}
               />
-
-              {/* Botão "Checar" dentro do Box */}
-              <Button
-                variant="contained"
+              <Grid
+                container
                 sx={{
-                  backgroundColor: "#26d07c",
-                  marginTop: "20px",
-                  "&:hover": { backgroundColor: "#1fa968" },
-                  width: "60%", // Botão com largura total
-                  alignSelf: "flex-start",
+                  display: "flex",
+                  flexDirection: "row",
+                  alignItems: "center",
                 }}
-                disabled={cpf.length !== 14 || loading}
-                onClick={handleCheck}
               >
-                {loading ? "Verificando..." : "Checar"}
-              </Button>
-
-              <Button
-                variant="contained"
-                sx={{
-                  backgroundColor: "#26d07c",
-                  marginTop: "20px",
-                  "&:hover": { backgroundColor: "#1fa968" },
-                  width: "60%", // Botão com largura total
-                  alignSelf: "flex-start",
-                }}
-                onClick={handleLista}
-              >
-                Criar Lista
-              </Button>
+                <Grid item xs={6}>
+                  <Button
+                    variant="contained"
+                    sx={{
+                      backgroundColor: "#26d07c",
+                      marginTop: "20px",
+                      "&:hover": { backgroundColor: "#1fa968" },
+                      width: "60%", // Botão com largura total
+                      alignSelf: "flex-start",
+                    }}
+                    disabled={cpf.length !== 14 || loading}
+                    onClick={handleCheck}
+                  >
+                    {loading ? "Verificando..." : "Checar"}
+                  </Button>
+                </Grid>
+                <Grid item xs={6}>
+                  <Button
+                    variant="text"
+                    sx={{
+                      marginTop: "20px",
+                      "&:hover": { backgroundColor: "#caffd2" },
+                      width: "100%", // Botão com largura total
+                      alignSelf: "flex-start",
+                      color: "#021b1a",
+                    }}
+                    onClick={handleLista}
+                  >
+                    Criar Lista
+                  </Button>
+                </Grid>
+              </Grid>
             </Box>
           </Grid>
         </Grid>
