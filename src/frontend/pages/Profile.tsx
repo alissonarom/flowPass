@@ -1,7 +1,7 @@
 /* eslint-disable */
 /* prettier-ignore */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Container,
   Typography,
@@ -22,11 +22,12 @@ import {
   Select,
   SelectChangeEvent,
 } from "@mui/material";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import Chip from "@mui/material/Chip";
 import Stack from "@mui/material/Stack";
 import AddIcon from "@mui/icons-material/Add";
+import { getUserProfileByCpf } from "../services/index";
 
 const modalStyle = {
   position: "absolute",
@@ -42,33 +43,32 @@ const modalStyle = {
 
 const Profile: React.FC = () => {
   const [lista, setLista] = useState<string>("");
+  const [searchParams] = useSearchParams();
+  const cpf = searchParams.get("cpf"); // Captura o CPF da URL
   const mockProfile = {
-    name: "João Silva",
+    name: "",
     birthDate: "",
-    cpf: "529.982.247-25",
-    phone: "(11) 98765-4321",
+    cpf: cpf,
+    phone: "",
     gender: "",
     profile: "Usuário",
-    history: [
-      { date: "10/10/2023", time: "22:30", event: "Festa de Aniversário" },
-      { date: "25/09/2023", time: "23:15", event: "Show de Rock" },
-    ],
-    penalties: [{ reason: "Comportamento inadequado", duration: "30 dias" }],
-    list: lista,
+    history: [],
+    penalties: [],
+    list: [],
   };
   const navigate = useNavigate();
   const [profileData, setProfileData] = useState(mockProfile);
   const [newIncident, setNewIncident] = useState("");
-  const [gender, setGender] = useState(mockProfile.gender);
-  const [errors, setErrors] = useState(!gender);
+  const [gender, setGender] = useState();
+  const [errors, setErrors] = useState(!profileData.name || !profileData.profile);
   const [openModal, setOpenModal] = useState(false);
   const promotores = ["Promotor A", "Promotor B", "Promotor C", "Sem lista"];
   const [suspensionTime, setSuspensionTime] = useState<string>("");
+  const [loading, setLoading] = useState(true);
 
   const handleChange = (field: string, value: string) => {
     setProfileData({ ...profileData, [field]: value });
     if (field == "gender") {
-      setGender(value);
       setErrors(false);
     }
   };
@@ -105,6 +105,33 @@ const Profile: React.FC = () => {
   const handleSuspensionChange = (event: SelectChangeEvent<string>) => {
     setSuspensionTime(event.target.value as string);
   };
+
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      try {
+        if (!cpf) throw new Error("CPF não informado");
+
+        const profile = await getUserProfileByCpf(cpf); // Usa a função do serviço
+
+        if (profile) {
+          setProfileData(profile); // Define o perfil com os dados do backend
+        } else {
+          setProfileData(mockProfile); // Usa o mock se o usuário não for encontrado
+        }
+      } catch (error) {
+        console.error("Erro ao buscar perfil do usuário:", error);
+        setProfileData(mockProfile); // Usa o mock em caso de erro
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUserProfile();
+  }, [cpf]);
+
+  if (loading) {
+    return <p>Carregando...</p>;
+  }
 
   return (
     <div style={{ backgroundColor: "#EDEDED", minHeight: "100vh" }}>
@@ -364,14 +391,20 @@ const Profile: React.FC = () => {
             Histórico de Entradas
           </Typography>
           <List>
-            {profileData.history.map((entry, index) => (
-              <ListItem key={index}>
-                <ListItemText
-                  primary={`${entry.date} às ${entry.time}`}
-                  secondary={entry.event}
-                />
-              </ListItem>
-            ))}
+            {profileData.history ? (
+              profileData.history.map((entry:any, index) => (
+                <ListItem key={index}>
+                  <ListItemText
+                    primary={`${entry.date} às ${entry.time}`}
+                    secondary={entry.event}
+                  />
+                </ListItem>
+              ))
+            ) : (
+              <Typography variant="h6" gutterBottom>
+                Sem histórico
+              </Typography>
+            )}
           </List>
           <TextareaAutosize
             minRows={3}

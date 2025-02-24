@@ -45,9 +45,10 @@ const Login: React.FC = () => {
     const isValid = validateCPF(cpf);
     setError(!isValid);
     if (isValid) {
-      navigate("/profile");
+      navigate(`/profile?cpf=${cpf}`);
     }
   };
+
   const handleLista = () => {
     navigate("/CriarLista");
   };
