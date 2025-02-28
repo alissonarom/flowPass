@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Box,
   Typography,
@@ -17,6 +17,8 @@ import {
   IconButton,
   Grid,
   Modal,
+  Snackbar,
+  Alert,
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
@@ -26,109 +28,77 @@ import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
 import { ptBR } from "date-fns/locale";
-
-// Dados mockados de promotores
-const mockPromoters = [
-  {
-    id: 1,
-    name: "Promotor A",
-    cpf: "111.111.111-11",
-    birthDate: "01/01/1990",
-    phone: "(11) 1111-1111",
-  },
-  {
-    id: 2,
-    name: "Promotor B",
-    cpf: "222.222.222-22",
-    birthDate: "02/02/1991",
-    phone: "(22) 2222-2222",
-  },
-];
-
-const mockUsers = [
-  { id: 1, name: "Alice Silva", cpf: "123.456.789-00" },
-  { id: 2, name: "Bruno Costa", cpf: "234.567.890-11" },
-  { id: 3, name: "Carla Mendes", cpf: "345.678.901-22" },
-  { id: 4, name: "Diego Rocha", cpf: "456.789.012-33" },
-  { id: 5, name: "Eduarda Lima", cpf: "567.890.123-44" },
-  { id: 6, name: "Felipe Alves", cpf: "678.901.234-55" },
-  { id: 7, name: "Gabriela Nunes", cpf: "789.012.345-66" },
-  { id: 8, name: "Henrique Silva", cpf: "890.123.456-77" },
-  { id: 9, name: "Isabela Torres", cpf: "901.234.567-88" },
-];
-
-const initialLists = [
-  {
-    title: "Lista 1",
-    promoter: 1,
-    users: [
-      mockUsers[0],
-      mockUsers[1],
-      mockUsers[2],
-      mockUsers[3],
-      mockUsers[4],
-    ],
-  },
-  {
-    title: "Lista 2",
-    promoter: 2,
-    users: [mockUsers[5], mockUsers[6], mockUsers[7], mockUsers[8]],
-  },
-];
+import {
+  createList,
+  createPromoter,
+  getLists,
+  getPromoters,
+} from "../services";
+import { Decimal128 } from "bson";
+import { IPromoter, IUser, List as ListType, UserProfile } from "../types";
+import { formatPhoneNumber, handleCpfChange, validateCPF } from "../utils";
 
 const CriarLista: React.FC = () => {
   const navigate = useNavigate();
   const [listTitle, setListTitle] = useState("");
-  const [selectedPromoter, setSelectedPromoter] = useState("");
+  const [selectedPromoter, setSelectedPromoter] = useState<IPromoter | null>(
+    null
+  );
   const [selectedUser, setSelectedUser] = useState("");
   const [userType, setUserType] = useState("");
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
-  const [lists, setLists] = useState<any[]>(initialLists);
+  const [lists, setLists] = useState<ListType[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [newPromoter, setNewPromoter] = useState({
-    name: "",
-    cpf: "",
-    birthDate: "",
-    phone: "",
-  });
+  const [promoters, setPromoters] = useState<IPromoter[]>([]);
   const [foundUser, setFoundUser] = useState<{
     id: number;
     name: string;
     cpf: string;
   } | null>(null);
-  const [promoters, setPromoters] = useState(mockPromoters);
   const [currentListIndex, setCurrentListIndex] = useState(null);
   const [cpfSearch, setCpfSearch] = useState("");
   const [newUser, setNewUser] = useState({ name: "", cpf: "" });
   const [newUserInputs, setNewUserInputs] = useState(false);
   const [openModal, setOpenModal] = useState(false);
+  const [newPromoter, setNewPromoter] = useState<IUser>({
+    name: "",
+    cpf: "",
+    birthDate: null,
+    phone: "",
+    gender: "",
+    profile: UserProfile.Promoter,
+    anniversary: false,
+    history: [],
+    penalties: [],
+    currentLists: [],
+    cash: new Decimal128("0"),
+  });
+  const [errorCpf, setErrorCpf] = useState<boolean>(false);
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarSeverity, setSnackbarSeverity] = useState<"success" | "error">(
+    "success"
+  );
+  const [snackbarMessage, setSnackbarMessage] = useState("");
 
-  // Função para salvar a lista
-  const handleSaveList = () => {
-    const newList = {
-      title: listTitle,
-      promoter: selectedPromoter,
-      users: [
-        {
-          name: mockUsers.find((u) => u.id === Number(selectedUser))?.name,
-          cpf: mockUsers.find((u) => u.id === Number(selectedUser))?.cpf,
-        },
-      ],
-      userType,
-      startDate,
-      endDate,
-    };
-    setLists([...lists, newList]);
-    alert("Lista salva com sucesso!");
-    setListTitle("");
-    setSelectedPromoter("");
-    setSelectedUser("");
-    setUserType("");
-    setStartDate(null);
-    setEndDate(null);
+  const checkInputs = () => {
+    const isFormValid =
+      newPromoter.name &&
+      newPromoter.cpf.length === 14 &&
+      newPromoter.birthDate &&
+      newPromoter.phone &&
+      newPromoter.gender;
+
+    const isCpfValid = validateCPF(newPromoter.cpf);
+
+    setErrorCpf(!isCpfValid);
+
+    if (isFormValid && isCpfValid) {
+      handleCreatePromoter();
+    }
   };
 
+  // Função para salvar a lista
   const handleOpenModal = () => {
     setIsModalOpen(true);
   };
@@ -137,17 +107,47 @@ const CriarLista: React.FC = () => {
     setIsModalOpen(false);
   };
 
-  const handleSavePromoter = () => {
-    const newId = promoters.length + 1; // Gera um novo ID
-    const promoterToAdd = { id: newId, ...newPromoter };
-    setPromoters([...promoters, promoterToAdd]); // Adiciona o novo promotor à lista
-    setSelectedPromoter(newId.toString()); // Seleciona o novo promotor automaticamente
-    handleCloseModal(); // Fecha o modal
+  // Função para criar um promotor
+  const handleCreatePromoter = async () => {
+    if (!newPromoter) {
+      console.error("Dados do promotor estão incompletos ou nulos.");
+      return;
+    }
+
+    try {
+      const createdPromoter = await createPromoter(newPromoter);
+      setPromoters((prevPromoters) => [...prevPromoters, createdPromoter]);
+      setSnackbarMessage("Promotor criado com sucesso!");
+      setSnackbarSeverity("success");
+      setSnackbarOpen(true);
+    } catch (error) {
+      console.error("Erro ao criar promotor:", error);
+      setSnackbarMessage("Erro ao criar Promotor. Tente novamente.");
+      setSnackbarSeverity("error");
+      setSnackbarOpen(true);
+    }
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
     const { name, value } = e.target;
-    setNewPromoter({ ...newPromoter, [name]: value });
+    if (newPromoter) {
+      setNewPromoter({ ...newPromoter, [name]: value });
+    }
+  };
+
+  const handleFormatChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
+    const value = handleCpfChange(e.target.value);
+
+    if (newPromoter) {
+      setNewPromoter((prevPromoter) => ({
+        ...prevPromoter,
+        cpf: value,
+      }));
+    }
   };
 
   const handleOpenModalList = (index: any) => {
@@ -159,28 +159,98 @@ const CriarLista: React.FC = () => {
   };
 
   const handleAddExistingUser = () => {
-    if (foundUser && currentListIndex !== null) {
-      const updatedLists = [...lists];
-      updatedLists[currentListIndex].users.push(foundUser);
-      setLists(updatedLists);
-      setOpenModal(false);
-    }
+    // if (foundUser && currentListIndex !== null) {
+    //   const updatedLists = [...lists];
+    //   updatedLists[currentListIndex].users.push(foundUser);
+    //   setLists(updatedLists);
+    //   setOpenModal(false);
+    // }
   };
 
   const handleSearch = () => {
-    const user = mockUsers.find((u) => u.cpf === cpfSearch);
-    setFoundUser(user || null);
+    // const user = mockUsers.find((u) => u.cpf === cpfSearch);
+    // setFoundUser(user || null);
   };
 
   const handleAddNewUser = () => {
-    const newUserWithId = { ...newUser, id: mockUsers.length + 1 };
-    mockUsers.push(newUserWithId);
-    const updatedLists = [...lists];
-    if (currentListIndex !== null) {
-      updatedLists[currentListIndex].users.push(newUserWithId);
+    // const newUserWithId = { ...newUser, id: mockUsers.length + 1 };
+    // mockUsers.push(newUserWithId);
+    // const updatedLists = [...lists];
+    // if (currentListIndex !== null) {
+    //   updatedLists[currentListIndex].users.push(newUserWithId);
+    // }
+    // setLists(updatedLists);
+    // setOpenModal(false);
+  };
+
+  useEffect(() => {
+    const fetchLists = async () => {
+      try {
+        const data = await getLists();
+        setLists(data);
+      } catch (error) {
+        console.error("Erro ao carregar listas:", error);
+      }
+    };
+
+    fetchLists();
+  }, []);
+
+  // Carrega os promotores ao montar o componente
+  useEffect(() => {
+    clearStates();
+    const fetchPromoters = async () => {
+      try {
+        const data = await getPromoters();
+        setPromoters(data);
+      } catch (error) {
+        console.error("Erro ao carregar promotores:", error);
+      }
+    };
+
+    fetchPromoters();
+  }, []);
+
+  const clearStates = () => {
+    setListTitle("");
+    setSelectedPromoter(null);
+    setSelectedUser("");
+    setUserType("");
+    setStartDate(null);
+    setEndDate(null);
+  };
+
+  const handleCreateList = async () => {
+    if (startDate && endDate) {
+      const newList = {
+        title: listTitle,
+        promotor: selectedPromoter?._id || "", // ID do promotor
+        startDate: startDate,
+        endDate: endDate,
+        users: [], // IDs dos usuários
+      };
+      console.log("Nova lista:", newList);
+
+      try {
+        const createdList = await createList(newList);
+        setLists((prevLists) => [...prevLists, createdList]);
+        setSnackbarMessage("Lista criada com sucesso!");
+        setSnackbarSeverity("success");
+        setSnackbarOpen(true);
+        clearStates();
+      } catch (error) {
+        console.error("Erro ao criar lista:", error);
+        setSnackbarMessage("Erro ao criar lista. Tente novamente.");
+        setSnackbarSeverity("error");
+        setSnackbarOpen(true);
+      }
+    } else {
+      console.error("Datas de início e fim são obrigatórias.");
     }
-    setLists(updatedLists);
-    setOpenModal(false);
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbarOpen(false);
   };
 
   return (
@@ -211,20 +281,20 @@ const CriarLista: React.FC = () => {
             />
           </Toolbar>
         </AppBar>
-        <Box sx={{ paddingInline: "20px" }}>
+        <Box
+          sx={{
+            backgroundColor: "white",
+            borderRadius: "8px",
+            boxShadow: 3,
+            padding: "20px",
+            margin: "20px",
+          }}
+        >
           {/* Primeiro Box: Criação de Lista */}
-          <Typography variant="h6" gutterBottom sx={{ marginTop: "24px" }}>
+          <Typography variant="h6" gutterBottom>
             Criar Nova Lista
           </Typography>
-          <Box
-            sx={{
-              backgroundColor: "white",
-              borderRadius: "8px",
-              boxShadow: 3,
-              padding: "20px",
-              marginBottom: "20px",
-            }}
-          >
+          <Box>
             <Grid
               container
               spacing={2}
@@ -247,29 +317,34 @@ const CriarLista: React.FC = () => {
               <Grid item xs={12} md={6}>
                 {/* Select de Promotores */}
                 <Select
-                  value={selectedPromoter}
+                  value={selectedPromoter?._id || ""} // Usa o ID do promotor ou uma string vazia
                   onChange={(e) => {
                     if (e.target.value === "new") {
                       handleOpenModal(); // Abre o modal se a opção for "Cadastrar novo promotor"
                     } else {
-                      setSelectedPromoter(e.target.value); // Seleciona o promotor
+                      const selectedPromoterId = e.target.value;
+                      const promoter =
+                        promoters.find((p) => p._id === selectedPromoterId) ||
+                        null;
+                      setSelectedPromoter(promoter); // Seleciona o promotor
                     }
                   }}
                   displayEmpty
                   fullWidth
                   sx={{ marginBottom: "20px" }}
                 >
-                  <MenuItem value="" disabled>
+                  <MenuItem value="" disabled sx={{ color: "gray" }}>
                     Selecione um Promotor
                   </MenuItem>
                   {promoters.map((promoter) => (
-                    <MenuItem key={promoter.id} value={promoter.id}>
+                    <MenuItem key={promoter._id} value={promoter._id}>
                       {promoter.name}
                     </MenuItem>
                   ))}
-                  <MenuItem value="new">Cadastrar novo promotor</MenuItem>
+                  <MenuItem sx={{ backgroundColor: "#dffff2" }} value="new">
+                    Cadastrar novo promotor
+                  </MenuItem>
                 </Select>
-
                 {/* Modal de Cadastro de Promotor */}
                 <Modal open={isModalOpen} onClose={handleCloseModal}>
                   <Box
@@ -294,33 +369,35 @@ const CriarLista: React.FC = () => {
                       label="Nome"
                       name="name"
                       fullWidth
-                      value={newPromoter.name}
+                      value={newPromoter?.name}
                       onChange={handleInputChange}
+                      error={!newPromoter?.name}
+                      helperText={!newPromoter?.name && "Campo obrigatório."}
                       sx={{ marginBottom: "20px" }}
                     />
                     <TextField
                       label="CPF"
                       name="cpf"
                       fullWidth
-                      value={newPromoter.cpf}
-                      onChange={handleInputChange}
+                      value={newPromoter?.cpf}
+                      onChange={handleFormatChange}
+                      error={errorCpf}
+                      helperText={errorCpf ? "CPF inválido" : ""}
                       sx={{ marginBottom: "20px" }}
                     />
                     {/* DatePicker para Data de Nascimento */}
                     <DatePicker
                       label="Data de Nascimento"
                       value={
-                        newPromoter.birthDate
+                        newPromoter?.birthDate
                           ? new Date(newPromoter.birthDate)
                           : null
                       }
                       onChange={(newValue) =>
-                        setNewPromoter({
-                          ...newPromoter,
-                          birthDate: newValue
-                            ? newValue.toISOString().split("T")[0]
-                            : "",
-                        })
+                        setNewPromoter((prev) => ({
+                          ...prev,
+                          birthDate: newValue ?? null,
+                        }))
                       }
                       sx={{ marginBottom: "20px", width: "100%" }}
                       format="dd/MM/yyyy"
@@ -329,13 +406,43 @@ const CriarLista: React.FC = () => {
                       label="Telefone"
                       name="phone"
                       fullWidth
-                      value={newPromoter.phone}
-                      onChange={handleInputChange}
+                      value={newPromoter?.phone || ""}
+                      onChange={(e) => {
+                        const formattedValue = formatPhoneNumber(
+                          e.target.value
+                        ); // Formata o telefone
+                        setNewPromoter((prevPromoter) => ({
+                          ...prevPromoter,
+                          phone: formattedValue, // Atualiza o estado com o telefone formatado
+                        }));
+                      }}
+                      placeholder="(43) 9 9999-9999"
                       sx={{ marginBottom: "20px" }}
                     />
+                    <TextField
+                      select
+                      label="Gênero"
+                      value={newPromoter.gender || ""} // Garante que o valor seja uma string
+                      onChange={(e) => {
+                        setNewPromoter((prevPromoter) => ({
+                          ...prevPromoter,
+                          gender: e.target.value, // Atualiza o estado com o gênero selecionado
+                        }));
+                      }}
+                      fullWidth
+                      error={!newPromoter.gender} // Exibe erro se o campo estiver vazio
+                      helperText={
+                        !newPromoter.gender ? "Campo obrigatório" : ""
+                      } // Mensagem de erro
+                      margin="normal"
+                    >
+                      <MenuItem value="Feminino">Feminino</MenuItem>
+                      <MenuItem value="Masculino">Masculino</MenuItem>
+                    </TextField>
 
                     {/* Botão de Salvar */}
                     <Button
+                      onClick={checkInputs}
                       variant="contained"
                       sx={{
                         backgroundColor: "#26d07c",
@@ -343,7 +450,6 @@ const CriarLista: React.FC = () => {
                           backgroundColor: "#1fa968",
                         },
                       }}
-                      onClick={handleSavePromoter}
                     >
                       Salvar
                     </Button>
@@ -391,144 +497,177 @@ const CriarLista: React.FC = () => {
                   backgroundColor: "#1fa968",
                 },
               }}
-              onClick={handleSaveList}
+              onClick={handleCreateList}
             >
-              Salvar Lista
+              Criar Lista
             </Button>
           </Box>
+        </Box>
+        <Box
+          sx={{
+            backgroundColor: "white",
+            borderRadius: "8px",
+            boxShadow: 3,
+            padding: "20px",
+            margin: "20px",
+          }}
+        >
+          <Box>
+            {/* Segundo Box: Listas dos Promotores */}
+            <Typography variant="h6" gutterBottom>
+              Listas dos Promotores
+            </Typography>
 
-          {/* Segundo Box: Listas dos Promotores */}
-          <Typography variant="h6" gutterBottom sx={{ marginTop: "24px" }}>
-            Listas dos Promotores
-          </Typography>
-
-          {/* Lista de Acordeões */}
-          {lists.map((list, index) => (
-            <Accordion
-              key={index}
-              sx={{
-                backgroundColor: "#a8ddbd",
-                "&.Mui-expanded": { backgroundColor: "#caffd2" },
-                marginBottom: "10px",
-              }}
-            >
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Typography>
-                  {list.title} - Promotor {list.promoter}
-                </Typography>
-                <Button
-                  onClick={() => handleOpenModalList(index)}
-                  startIcon={<AddIcon />}
-                  variant="contained"
-                  sx={{ marginLeft: "auto" }}
-                >
-                  Adicionar participante
-                </Button>
-              </AccordionSummary>
-              <AccordionDetails sx={{ backgroundColor: "#f0f0f0" }}>
-                <List>
-                  {list.users.map((user: any) => (
-                    <ListItem key={user.id}>
-                      <ListItemText primary={user.name} secondary={user.cpf} />
-                    </ListItem>
-                  ))}
-                </List>
-              </AccordionDetails>
-            </Accordion>
-          ))}
-          <Modal open={openModal} onClose={() => setOpenModal(false)}>
-            <Box
-              sx={{
-                position: "absolute",
-                top: "50%",
-                left: "50%",
-                transform: "translate(-50%, -50%)",
-                width: 400,
-                bgcolor: "background.paper",
-                boxShadow: 24,
-                p: 4,
-                borderRadius: 2,
-              }}
-            >
-              <Typography variant="h6" gutterBottom>
-                Buscar usuário por CPF
-              </Typography>
-              <Box display="flex" gap={2} mb={2}>
-                <TextField
-                  label="CPF"
-                  value={cpfSearch}
-                  onChange={(e) => setCpfSearch(e.target.value)}
-                  fullWidth
-                />
-                <Button variant="contained" onClick={handleSearch}>
-                  Buscar
-                </Button>
-              </Box>
-              {foundUser ? (
-                <Box
-                  onClick={handleAddExistingUser}
+            {/* Lista de Acordeões */}
+            {lists.length ? (
+              lists.map((list, index) => (
+                <Accordion
+                  key={index}
                   sx={{
-                    p: 2,
-                    bgcolor: "#e0f7fa",
-                    borderRadius: 1,
-                    cursor: "pointer",
-                    "&:hover": { bgcolor: "#b2ebf2" },
-                    justifyContent: "space-between",
-                    display: "flex",
-                    width: "100%",
+                    backgroundColor: "#a8ddbd",
+                    "&.Mui-expanded": { backgroundColor: "#caffd2" },
+                    marginBottom: "10px",
                   }}
                 >
-                  <Typography>
-                    {foundUser.name} - {foundUser.cpf}
-                  </Typography>
-                </Box>
-              ) : (
-                <Button
-                  fullWidth
-                  variant="outlined"
-                  onClick={() => setNewUserInputs(!newUserInputs)}
-                >
-                  Cadastrar usuário
-                </Button>
-              )}
-
-              {newUserInputs && (
-                <Box mt={2}>
-                  <TextField
-                    label="Nome"
-                    value={newUser.name}
-                    onChange={(e) =>
-                      setNewUser({ ...newUser, name: e.target.value })
-                    }
-                    fullWidth
-                    sx={{ mb: 2 }}
-                  />
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Typography>
+                      {list.title} - Promotor {list.promoter}
+                    </Typography>
+                    <Button
+                      onClick={() => handleOpenModalList(index)}
+                      startIcon={<AddIcon />}
+                      variant="contained"
+                      sx={{ marginLeft: "auto" }}
+                    >
+                      Adicionar participante
+                    </Button>
+                  </AccordionSummary>
+                  <AccordionDetails sx={{ backgroundColor: "#f0f0f0" }}>
+                    <List>
+                      {list.users.map((user: any) => (
+                        <ListItem key={user.id}>
+                          <ListItemText
+                            primary={user.name}
+                            secondary={user.cpf}
+                          />
+                        </ListItem>
+                      ))}
+                    </List>
+                  </AccordionDetails>
+                </Accordion>
+              ))
+            ) : (
+              <Typography variant="subtitle2" sx={{ color: "gray" }}>
+                Nenhuma lista cadastrada
+              </Typography>
+            )}
+            {/* Modal de Adicionar Participante */}
+            <Modal open={openModal} onClose={() => setOpenModal(false)}>
+              <Box
+                sx={{
+                  position: "absolute",
+                  top: "50%",
+                  left: "50%",
+                  transform: "translate(-50%, -50%)",
+                  width: 400,
+                  bgcolor: "background.paper",
+                  boxShadow: 24,
+                  p: 4,
+                  borderRadius: 2,
+                }}
+              >
+                <Typography variant="h6" gutterBottom>
+                  Buscar usuário por CPF
+                </Typography>
+                <Box display="flex" gap={2} mb={2}>
                   <TextField
                     label="CPF"
-                    value={newUser.cpf}
-                    onChange={(e) =>
-                      setNewUser({ ...newUser, cpf: e.target.value })
-                    }
+                    value={cpfSearch}
+                    onChange={(e) => setCpfSearch(e.target.value)}
                     fullWidth
-                    sx={{ mb: 2 }}
                   />
-                  <Box display="flex" justifyContent="space-between">
-                    <Button variant="contained" onClick={handleAddNewUser}>
-                      Adicionar
-                    </Button>
-                    <Button
-                      variant="outlined"
-                      onClick={() => setOpenModal(false)}
-                    >
-                      Cancelar
-                    </Button>
-                  </Box>
+                  <Button variant="contained" onClick={handleSearch}>
+                    Buscar
+                  </Button>
                 </Box>
-              )}
-            </Box>
-          </Modal>
+                {foundUser ? (
+                  <Box
+                    onClick={handleAddExistingUser}
+                    sx={{
+                      p: 2,
+                      bgcolor: "#e0f7fa",
+                      borderRadius: 1,
+                      cursor: "pointer",
+                      "&:hover": { bgcolor: "#b2ebf2" },
+                      justifyContent: "space-between",
+                      display: "flex",
+                      width: "100%",
+                    }}
+                  >
+                    <Typography>
+                      {foundUser.name} - {foundUser.cpf}
+                    </Typography>
+                  </Box>
+                ) : (
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    onClick={() => setNewUserInputs(!newUserInputs)}
+                  >
+                    Cadastrar usuário
+                  </Button>
+                )}
+                {newUserInputs && (
+                  <Box mt={2}>
+                    <TextField
+                      label="Nome"
+                      value={newUser.name}
+                      onChange={(e) =>
+                        setNewUser({ ...newUser, name: e.target.value })
+                      }
+                      fullWidth
+                      sx={{ mb: 2 }}
+                    />
+                    <TextField
+                      label="CPF"
+                      value={newUser.cpf}
+                      onChange={(e) =>
+                        setNewUser({ ...newUser, cpf: e.target.value })
+                      }
+                      fullWidth
+                      sx={{ mb: 2 }}
+                    />
+                    <Box display="flex" justifyContent="space-between">
+                      <Button variant="contained" onClick={handleAddNewUser}>
+                        Adicionar
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        onClick={() => setOpenModal(false)}
+                      >
+                        Cancelar
+                      </Button>
+                    </Box>
+                  </Box>
+                )}
+              </Box>
+            </Modal>
+          </Box>
         </Box>
       </LocalizationProvider>
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={5000} // Fecha automaticamente após 6 segundos
+        onClose={handleCloseSnackbar}
+      >
+        <Alert
+          onClose={handleCloseSnackbar}
+          severity={snackbarSeverity}
+          sx={{ width: "100%" }}
+        >
+          {snackbarMessage}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

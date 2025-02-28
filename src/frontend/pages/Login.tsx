@@ -13,33 +13,13 @@ import {
   Grid,
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
+import { handleCpfChange, validateCPF } from "../utils";
 
 const Login: React.FC = () => {
   const [cpf, setCpf] = useState("");
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-
-  // Validação de CPF local
-  const validateCPF = (cpf: string): boolean => {
-    cpf = cpf.replace(/\D/g, ""); // Remove não numéricos
-
-    if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
-
-    let sum = 0;
-    for (let i = 0; i < 9; i++) sum += parseInt(cpf[i]) * (10 - i);
-    let remainder = (sum * 10) % 11;
-    if (remainder === 10 || remainder === 11) remainder = 0;
-    if (remainder !== parseInt(cpf[9])) return false;
-
-    sum = 0;
-    for (let i = 0; i < 10; i++) sum += parseInt(cpf[i]) * (11 - i);
-    remainder = (sum * 10) % 11;
-    if (remainder === 10 || remainder === 11) remainder = 0;
-    if (remainder !== parseInt(cpf[10])) return false;
-
-    return true;
-  };
 
   const handleCheck = () => {
     const isValid = validateCPF(cpf);
@@ -52,21 +32,9 @@ const Login: React.FC = () => {
   const handleLista = () => {
     navigate("/CriarLista");
   };
-
-  const handleCpfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let value = e.target.value.replace(/\D/g, ""); // Remove todos os caracteres não numéricos
-    if (value.length <= 3) {
-      value = value.replace(/(\d{1,3})/, "$1");
-    } else if (value.length <= 6) {
-      value = value.replace(/(\d{3})(\d{1,3})/, "$1.$2");
-    } else if (value.length <= 9) {
-      value = value.replace(/(\d{3})(\d{3})(\d{1,3})/, "$1.$2.$3");
-    } else {
-      value = value.replace(/(\d{3})(\d{3})(\d{3})(\d{1,2})/, "$1.$2.$3-$4");
-    }
-    setCpf(value);
+  const editaCpf = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setCpf(handleCpfChange(e.target.value));
   };
-
   return (
     <>
       {/* Barra superior */}
@@ -139,7 +107,7 @@ const Login: React.FC = () => {
                 variant="outlined"
                 fullWidth
                 value={cpf}
-                onChange={handleCpfChange}
+                onChange={editaCpf}
                 error={error}
                 helperText={error ? "CPF inválido ou não encontrado." : ""}
               />

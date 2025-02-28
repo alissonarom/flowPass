@@ -37,7 +37,7 @@
     "dev": "concurrently \"yarn dev:backend\" \"yarn start\"",
     "lint": "eslint src --ext .ts,.tsx",
     "deploy": "netlify deploy --prod",
-    "build-and-deploy": "npm run build && npm run deploy"
+    "bdf": "npm run build && npm run deploy"
   },
   "browserslist": {
     "production": [

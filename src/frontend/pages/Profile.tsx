@@ -18,16 +18,39 @@ import {
   MenuItem,
   TextareaAutosize,
   Modal,
-  Avatar,
+  Snackbar,
+  Alert,
   Select,
   SelectChangeEvent,
+  CircularProgress,
+  ListItemIcon,
 } from "@mui/material";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import Chip from "@mui/material/Chip";
 import Stack from "@mui/material/Stack";
 import AddIcon from "@mui/icons-material/Add";
-import { getUserProfileByCpf } from "../services/index";
+import EditIcon from "@mui/icons-material/Edit";
+import DeleteIcon from "@mui/icons-material/Delete";
+import ErrorIcon from "@mui/icons-material/Error";
+import {
+  createOrUpdateUser,
+  getLists,
+  getUserProfileByCpf,
+} from "../services/index";
+import {
+  IPenalty,
+  IUser,
+  PenaltyDuration,
+  UserProfile,
+  UserPromotorProfile,
+} from "../types";
+import { DatePicker } from "@mui/x-date-pickers";
+import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
+import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
+import { ptBR } from "date-fns/locale";
+import { calculateEndDate, formatPhoneNumber } from "../utils";
+import { Decimal128 } from "bson";
 
 const modalStyle = {
   position: "absolute",
@@ -42,50 +65,67 @@ const modalStyle = {
 };
 
 const Profile: React.FC = () => {
-  const [lista, setLista] = useState<string>("");
+  const [lista, setLista] = useState<{ id: string; name: string }[]>([]);
   const [searchParams] = useSearchParams();
-  const cpf = searchParams.get("cpf"); // Captura o CPF da URL
-  const mockProfile = {
+  const cpf = (searchParams.get("cpf") || "").replace(/\D/g, "");
+  const navigate = useNavigate();
+  const [profileData, setProfileData] = useState<IUser>({
     name: "",
-    birthDate: "",
     cpf: cpf,
+    birthDate: null,
     phone: "",
     gender: "",
-    profile: "Usuário",
+    profile: UserProfile.Common,
+    anniversary: false,
     history: [],
     penalties: [],
-    list: [],
-  };
-  const navigate = useNavigate();
-  const [profileData, setProfileData] = useState(mockProfile);
+    currentLists: [],
+    cash: new Decimal128("0"),
+  });
   const [newIncident, setNewIncident] = useState("");
-  const [gender, setGender] = useState();
-  const [errors, setErrors] = useState(!profileData.name || !profileData.profile);
+  const [errors, setErrors] = useState(
+    profileData.name == "" || profileData.gender == ""
+  );
   const [openModal, setOpenModal] = useState(false);
-  const promotores = ["Promotor A", "Promotor B", "Promotor C", "Sem lista"];
   const [suspensionTime, setSuspensionTime] = useState<string>("");
   const [loading, setLoading] = useState(true);
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState("");
+  const [snackbarSeverity, setSnackbarSeverity] = useState<"success" | "error">(
+    "success"
+  );
 
-  const handleChange = (field: string, value: string) => {
-    setProfileData({ ...profileData, [field]: value });
-    if (field == "gender") {
-      setErrors(false);
-    }
-  };
-
-  const handleSave = () => {
-    // Validação de campos obrigatórios
-    if (mockProfile.profile === "") {
-      setErrors(true);
+  const handleAddIncident = () => {
+    if (!newIncident || !suspensionTime) {
+      alert("Preencha todos os campos do incidente.");
       return;
     }
 
-    // Lógica para salvar as alterações (substitua por chamada à API)
-    console.log("Dados salvos:", profileData);
-    if (newIncident) {
-      console.log("Novo incidente adicionado:", newIncident);
+    const newPenalty: IPenalty = {
+      observation: newIncident,
+      duration: suspensionTime as PenaltyDuration,
+      startDate: new Date().toISOString(),
+    };
+
+    setProfileData((prevProfileData) => ({
+      ...prevProfileData,
+      penalties: [...prevProfileData.penalties, newPenalty],
+    }));
+
+    setNewIncident("");
+    setSuspensionTime("");
+  };
+
+  const handleChange = (field: string, value: string | null | Date) => {
+    let formattedValue = value;
+
+    // Formata a data para o padrão ISO (backend espera "1990-01-15T00:00:00.000Z")
+    if (field === "birthDate" && value instanceof Date) {
+      formattedValue = value.toISOString(); // Converte para o formato ISO
     }
-    alert("Dados salvos com sucesso!");
+
+    // Atualiza o estado com o valor formatado
+    setProfileData({ ...profileData, [field]: formattedValue });
   };
 
   const handleOpenModal = () => {
@@ -96,9 +136,71 @@ const Profile: React.FC = () => {
     setOpenModal(false);
   };
 
-  const handleSelectPromoter = (promoter: string) => {
-    setLista(promoter); // Atualiza o estado com o promotor selecionado
-    handleCloseModal(); // Fecha o modal
+  const handleSelectList = (promoter: { id: string; name: string }) => {
+    // Atualiza o estado profileData
+    setProfileData((prevProfileData) => ({
+      ...prevProfileData,
+      currentLists: [promoter.id], // Adiciona o ID da lista
+      history: [
+        ...prevProfileData.history,
+        {
+          listId: promoter.id, // ID da lista
+          joinedAt: new Date(), // Data de entrada
+          leftAt: undefined, // Data de saída (indefinida por enquanto)
+        },
+      ],
+      profile: UserProfile.Common, // Ou outro perfil, se necessário
+    }));
+
+    // Fecha o modal
+    handleCloseModal();
+  };
+
+  const handleRemoveFromList = () => {
+    setProfileData((prevProfileData) => {
+      // Verifica se o usuário está em uma lista
+      if (prevProfileData.currentLists.length === 0) {
+        return prevProfileData; // Retorna sem alterações se não estiver em uma lista
+      }
+
+      // Atualiza o histórico para registrar a saída da lista
+      const updatedHistory = prevProfileData.history.map((entry) => {
+        if (entry.listId === prevProfileData.currentLists[0] && !entry.leftAt) {
+          return { ...entry, leftAt: new Date() }; // Adiciona a data de saída
+        }
+        return entry;
+      });
+
+      // Retorna o novo estado
+      return {
+        ...prevProfileData,
+        currentLists: [], // Limpa a lista atual
+        history: updatedHistory, // Atualiza o histórico
+      };
+    });
+  };
+
+  const handleSaveUser = async () => {
+    console.log("Salvando usuário:", profileData);
+    try {
+      const user = await createOrUpdateUser(profileData);
+
+      // Exibe mensagem de sucesso
+      setSnackbarMessage("Usuário salvo com sucesso!");
+      setSnackbarSeverity("success");
+      setSnackbarOpen(true);
+    } catch (error) {
+      console.error("Erro ao salvar/atualizar usuário:", error);
+
+      // Exibe mensagem de erro
+      setSnackbarMessage("Erro ao salvar usuário. Tente novamente.");
+      setSnackbarSeverity("error");
+      setSnackbarOpen(true);
+    }
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbarOpen(false);
   };
 
   // Função para lidar com a seleção do tempo de suspensão
@@ -115,12 +217,9 @@ const Profile: React.FC = () => {
 
         if (profile) {
           setProfileData(profile); // Define o perfil com os dados do backend
-        } else {
-          setProfileData(mockProfile); // Usa o mock se o usuário não for encontrado
         }
       } catch (error) {
         console.error("Erro ao buscar perfil do usuário:", error);
-        setProfileData(mockProfile); // Usa o mock em caso de erro
       } finally {
         setLoading(false);
       }
@@ -129,330 +228,496 @@ const Profile: React.FC = () => {
     fetchUserProfile();
   }, [cpf]);
 
-  if (loading) {
-    return <p>Carregando...</p>;
-  }
+  useEffect(() => {
+    setErrors(profileData.name === "" || profileData.gender === "");
+  }, [profileData]);
+
+  useEffect(() => {
+    const fetchLists = async () => {
+      try {
+        const data = await getLists();
+        setLista(data);
+      } catch (error) {
+        console.error("Erro ao carregar listas:", error);
+      }
+    };
+
+    fetchLists();
+  }, []);
 
   return (
     <div style={{ backgroundColor: "#EDEDED", minHeight: "100vh" }}>
-      <AppBar
-        position="static"
-        sx={{
-          backgroundColor: "#00df81",
-          height: "65px",
-          justifyContent: "center",
-        }}
-      >
-        <Toolbar>
-          <IconButton onClick={() => navigate("/")} sx={{ color: "white" }}>
-            <ArrowBackIcon />
-          </IconButton>
-          <img
-            src="/logo-top-bar-bco.png"
-            alt="Logo"
-            style={{ width: "120px", height: "45px", marginLeft: "40px" }}
-          />
-        </Toolbar>
-      </AppBar>
-      <Stack
-        direction="row"
-        sx={{
-          marginTop: "24px !important",
-          justifyContent: "center",
-          backgroundColor: "#EDEDED",
-          alignItems: "center",
-          gap: "24px",
-        }}
-      >
-        {/* Chip dinâmico */}
-        <Chip
-          label={
-            profileData.profile == "Promotor"
-              ? `Promotor: ${profileData.name}`
-              : lista == "Sem lista" || lista == ""
-                ? "O usuário não está numa lista"
-                : `LISTA: ${lista}`
-          }
-          avatar={
-            profileData.profile == "Promotor" ? (
-              <Avatar src="./flowpass-favicon.png" />
-            ) : undefined
-          }
-          color={
-            profileData.profile == "Promotor"
-              ? "default"
-              : lista == "Sem lista" || lista == ""
-                ? "warning"
-                : "primary"
-          }
-          sx={{ width: "40%", justifyContent: "flex-start" }}
-          size="medium"
-        />
-
-        {/* Botão de adicionar (aparece apenas se a lista estiver vazia) */}
-        {profileData.profile == "Promotor" ? undefined : lista == "Sem lista" ||
-          lista == "" ? (
-          <IconButton
-            onClick={handleOpenModal}
-            sx={{
-              color: "white",
-              backgroundColor: "#ed6c02",
-              "&:hover": { backgroundColor: "#f3862d" },
-            }}
-          >
-            <AddIcon />
-          </IconButton>
-        ) : (
-          <Button
-            variant="contained"
-            sx={{
-              backgroundColor: "#26d07c",
-              borderRadius: "25px",
-              "&:hover": {
-                backgroundColor: "#1fa968",
-              },
-            }}
-            onClick={handleOpenModal}
-          >
-            Editar
-          </Button>
-        )}
-        {profileData.profile == "Promotor" && (
-          <Box
-            sx={{
-              flexDirection: "row",
-              display: "flex",
-              justifyContent: "center",
-            }}
-          >
-            <Typography
-              variant="h6"
-              gutterBottom
-              sx={{ display: "block", color: "#03624c" }}
-            >
-              R$
-            </Typography>
-            <Typography
-              variant="h3"
-              gutterBottom
-              sx={{ display: "block", color: "#03624c" }}
-            >
-              4,20
-            </Typography>
-          </Box>
-        )}
-        {/* Modal para seleção de promotor */}
-        <Modal open={openModal} onClose={handleCloseModal}>
-          <Box sx={modalStyle}>
-            <Typography variant="h6" gutterBottom>
-              Selecione uma Lista
-            </Typography>
-            <List>
-              {promotores.map((promoter, index) => (
-                <ListItem
-                  component="li"
-                  key={index}
-                  onClick={() => handleSelectPromoter(promoter)}
+      <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ptBR}>
+        <AppBar
+          position="static"
+          sx={{
+            backgroundColor: "#00df81",
+            height: "65px",
+            justifyContent: "center",
+          }}
+        >
+          <Toolbar>
+            <IconButton onClick={() => navigate("/")} sx={{ color: "white" }}>
+              <ArrowBackIcon />
+            </IconButton>
+            <img
+              src="/logo-top-bar-bco.png"
+              alt="Logo"
+              style={{ width: "120px", height: "45px", marginLeft: "40px" }}
+            />
+          </Toolbar>
+        </AppBar>
+        <Box
+          width="100%"
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+          marginTop={{ xs: "65px", md: "30px" }}
+          flexDirection={{ xs: "column", md: "column" }}
+          sx={{
+            backgroundColor: "#EDEDED",
+          }}
+        >
+          {loading ? (
+            <CircularProgress style={{ color: "#00df81" }} size={64} />
+          ) : (
+            <>
+              <Stack
+                direction="row"
+                sx={{
+                  justifyContent: "space-between",
+                  backgroundColor: "#EDEDED",
+                  alignItems: "center",
+                  gap: "10px",
+                }}
+              >
+                {/* Chip dinâmico */}
+                <Chip
+                  label={
+                    profileData.profile == UserPromotorProfile.Promoter
+                      ? `Promotor: ${profileData.name}`
+                      : profileData.currentLists.length === 0
+                        ? "O usuário não está numa lista"
+                        : `LISTA: ${lista}`
+                  }
+                  color={
+                    profileData.profile == UserPromotorProfile.Promoter ||
+                    profileData.currentLists.length > 0
+                      ? "primary"
+                      : "warning"
+                  }
                   sx={{
-                    cursor: "pointer", // Cursor pointer para indicar que é clicável
-                    "&:hover": {
-                      backgroundColor: "#CAFFD2", // Cor de fundo ao passar o mouse
-                    },
+                    width: "100%",
+                    justifyContent: "flex-start",
+                    minWidth: "250px",
+                    color: "white",
+                  }}
+                  size="medium"
+                />
+
+                {/* Botão de adicionar (aparece apenas se a lista estiver vazia) */}
+                {profileData.profile ==
+                UserPromotorProfile.Promoter ? undefined : !profileData
+                    .currentLists.length ? (
+                  <IconButton
+                    onClick={handleOpenModal}
+                    sx={{
+                      color: "white",
+                      backgroundColor: "#ed6c02",
+                      "&:hover": { backgroundColor: "#f3862d" },
+                    }}
+                  >
+                    <AddIcon />
+                  </IconButton>
+                ) : (
+                  <IconButton
+                    onClick={handleOpenModal}
+                    sx={{
+                      color: "white",
+                      backgroundColor: "#26d07c",
+                      "&:hover": {
+                        backgroundColor: "#1fa968",
+                      },
+                    }}
+                  >
+                    <EditIcon />
+                  </IconButton>
+                )}
+                {profileData.profile !== UserPromotorProfile.Promoter &&
+                profileData.currentLists.length ? (
+                  <IconButton
+                    onClick={handleRemoveFromList} // Chama a função para remover da lista
+                    sx={{
+                      color: "white",
+                      backgroundColor: "#26d07c",
+                      "&:hover": {
+                        backgroundColor: "#1fa968",
+                      },
+                    }}
+                  >
+                    <DeleteIcon />
+                  </IconButton>
+                ) : undefined}
+                {profileData.profile == UserPromotorProfile.Promoter && (
+                  <Box
+                    sx={{
+                      flexDirection: "row",
+                      display: "flex",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Typography
+                      variant="h6"
+                      gutterBottom
+                      sx={{ display: "block", color: "#03624c" }}
+                    >
+                      R$
+                    </Typography>
+                    <Typography
+                      variant="h3"
+                      gutterBottom
+                      sx={{ display: "block", color: "#03624c" }}
+                    >
+                      4,20
+                    </Typography>
+                  </Box>
+                )}
+                {/* Modal para seleção de promotor */}
+                <Modal open={openModal} onClose={handleCloseModal}>
+                  <Box sx={modalStyle}>
+                    <Typography variant="h6" gutterBottom>
+                      Selecione uma Lista
+                    </Typography>
+                    {lista.length ? (
+                      <List>
+                        {lista.map((listas, index) => (
+                          <ListItem
+                            component="li"
+                            key={index}
+                            onClick={() => handleSelectList(listas)}
+                            sx={{
+                              cursor: "pointer", // Cursor pointer para indicar que é clicável
+                              "&:hover": {
+                                backgroundColor: "#CAFFD2", // Cor de fundo ao passar o mouse
+                              },
+                            }}
+                          >
+                            <ListItemText primary={listas.name} />
+                          </ListItem>
+                        ))}
+                      </List>
+                    ) : (
+                      <Typography
+                        variant="subtitle2"
+                        sx={{ color: "grey" }}
+                        gutterBottom
+                      >
+                        Não há listas cadastradas
+                      </Typography>
+                    )}
+                  </Box>
+                </Modal>
+              </Stack>
+              <Container
+                sx={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "20px",
+                  backgroundColor: "#EDEDED",
+                }}
+              >
+                {/* Card de Dados Pessoais */}
+                <Box
+                  sx={{
+                    width: "100%",
+                    maxWidth: "800px",
+                    backgroundColor: "white",
+                    borderRadius: "8px",
+                    boxShadow: 3,
+                    padding: "20px",
+                    marginBottom: "20px",
                   }}
                 >
-                  <ListItemText primary={promoter} />
-                </ListItem>
-              ))}
-            </List>
-          </Box>
-        </Modal>
-      </Stack>
-      <Container
-        sx={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: "20px",
-          backgroundColor: "#EDEDED",
-        }}
-      >
-        {/* Card de Dados Pessoais */}
-        <Box
-          sx={{
-            width: "100%",
-            maxWidth: "800px",
-            backgroundColor: "white",
-            borderRadius: "8px",
-            boxShadow: 3,
-            padding: "20px",
-            marginBottom: "20px",
-          }}
-        >
-          <Typography variant="h6" gutterBottom>
-            Dados Pessoais
-          </Typography>
-          <Grid container spacing={2}>
-            <Grid item xs={6}>
-              <TextField
-                label="Nome"
-                value={profileData.name}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  handleChange("name", e.target.value)
-                }
-                fullWidth
-                margin="normal"
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                label="CPF"
-                value={profileData.cpf}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  handleChange("cpf", e.target.value)
-                }
-                fullWidth
-                disabled
-                margin="normal"
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                label="Data de Nascimento"
-                value={profileData.birthDate}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  handleChange("birthDate", e.target.value)
-                }
-                fullWidth
-                margin="normal"
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                label="Celular"
-                value={profileData.phone}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  handleChange("phone", e.target.value)
-                }
-                fullWidth
-                margin="normal"
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                select
-                label="Gênero"
-                value={profileData.gender}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  handleChange("gender", e.target.value)
-                }
-                fullWidth
-                error={!gender}
-                helperText={mockProfile.gender ? "" : "Campo obrigatório"}
-                margin="normal"
-              >
-                <MenuItem value="Promotor">Masculino</MenuItem>
-                <MenuItem value="Usuário">Feminino</MenuItem>
-                <MenuItem value="Funcionário">Não opinar</MenuItem>
-              </TextField>
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                select
-                label="Perfil"
-                value={profileData.profile}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  handleChange("profile", e.target.value)
-                }
-                fullWidth
-                margin="normal"
-              >
-                <MenuItem value="Promotor">Promotor</MenuItem>
-                <MenuItem value="Usuário">Usuário</MenuItem>
-                <MenuItem value="Funcionário">Funcionário</MenuItem>
-              </TextField>
-            </Grid>
-          </Grid>
-        </Box>
+                  <Typography variant="h6" gutterBottom>
+                    Dados Pessoais
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={6}>
+                      <TextField
+                        label="Nome"
+                        value={profileData.name}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          handleChange("name", e.target.value)
+                        }
+                        fullWidth
+                        error={profileData.name ? false : true}
+                        helperText={profileData.name ? "" : "Campo obrigatório"}
+                        margin="normal"
+                      />
+                    </Grid>
+                    <Grid item xs={6}>
+                      <TextField
+                        label="CPF"
+                        value={profileData.cpf}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          handleChange("cpf", e.target.value)
+                        }
+                        fullWidth
+                        disabled
+                        margin="normal"
+                      />
+                    </Grid>
+                    <Grid item xs={6}>
+                      <DatePicker
+                        sx={{ minWidth: "100%", marginTop: "16px" }}
+                        label="Data de Nascimento"
+                        value={
+                          profileData.birthDate
+                            ? new Date(profileData.birthDate) // Converte a string ISO para Date
+                            : null // Caso não haja data definida
+                        }
+                        onChange={
+                          (date: Date | null) => handleChange("birthDate", date) // Passa o objeto Date diretamente
+                        }
+                      />
+                    </Grid>
+                    <Grid item xs={6}>
+                      <TextField
+                        label="Celular"
+                        value={formatPhoneNumber(profileData.phone)}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          handleChange(
+                            "phone",
+                            e.target.value.replace(/\D/g, "")
+                          )
+                        }
+                        placeholder="(43) 9 9999-9999"
+                        fullWidth
+                        margin="normal"
+                      />
+                    </Grid>
+                    <Grid item xs={6}>
+                      <TextField
+                        select
+                        label="Gênero"
+                        value={profileData.gender}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          handleChange("gender", e.target.value)
+                        }
+                        fullWidth
+                        error={profileData.gender ? false : true}
+                        helperText={
+                          profileData.gender ? "" : "Campo obrigatório"
+                        }
+                        margin="normal"
+                      >
+                        <MenuItem value="Feminino">Feminino</MenuItem>
+                        <MenuItem value="Masculino">Masculino</MenuItem>
+                      </TextField>
+                    </Grid>
+                    <Grid item xs={6}>
+                      <TextField
+                        select
+                        label="Perfil"
+                        value={profileData.profile}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          handleChange("profile", e.target.value)
+                        }
+                        fullWidth
+                        margin="normal"
+                        error={profileData.profile ? false : true}
+                        helperText={
+                          profileData.profile ? "" : "Campo obrigatório"
+                        }
+                      >
+                        <MenuItem value="Promotor">Promotor</MenuItem>
+                        <MenuItem value="Usuário">Usuário</MenuItem>
+                        <MenuItem value="Funcionário">Funcionário</MenuItem>
+                      </TextField>
+                    </Grid>
+                  </Grid>
+                </Box>
 
-        {/* Card de Histórico de Entradas */}
-        <Box
-          sx={{
-            width: "100%",
-            maxWidth: "800px",
-            backgroundColor: "white",
-            borderRadius: "8px",
-            boxShadow: 3,
-            padding: "20px",
-            marginBottom: "20px",
-          }}
-        >
-          <Typography variant="h6" gutterBottom>
-            Histórico de Entradas
-          </Typography>
-          <List>
-            {profileData.history ? (
-              profileData.history.map((entry:any, index) => (
-                <ListItem key={index}>
-                  <ListItemText
-                    primary={`${entry.date} às ${entry.time}`}
-                    secondary={entry.event}
+                {/* Card de Histórico de Entradas */}
+                <Box
+                  sx={{
+                    width: "100%",
+                    maxWidth: "800px",
+                    backgroundColor: "white",
+                    borderRadius: "8px",
+                    boxShadow: 3,
+                    padding: "20px",
+                    marginBottom: "20px",
+                  }}
+                >
+                  <Typography variant="h6" gutterBottom>
+                    Histórico de Entradas
+                  </Typography>
+                  <List>
+                    {profileData.history.length ? (
+                      profileData.history.map((entry: any, index: number) => (
+                        <ListItem key={index}>
+                          <ListItemText
+                            primary={`${entry.date} às ${entry.time}`}
+                            secondary={entry.event}
+                          />
+                        </ListItem>
+                      ))
+                    ) : (
+                      <Typography
+                        variant="subtitle1"
+                        sx={{ color: "grey" }}
+                        gutterBottom
+                      >
+                        Sem histórico de entradas
+                      </Typography>
+                    )}
+                  </List>
+                </Box>
+
+                {/* Card histórico de Incidentes */}
+                <Box
+                  sx={{
+                    width: "100%",
+                    maxWidth: "800px",
+                    backgroundColor: "white",
+                    borderRadius: "8px",
+                    boxShadow: 3,
+                    padding: "20px",
+                    marginBottom: "20px",
+                  }}
+                >
+                  <Typography variant="h6" gutterBottom>
+                    Histórico de incidentes
+                  </Typography>
+                  <List>
+                    {profileData.penalties.length ? (
+                      profileData.penalties.map(
+                        (entry: IPenalty, index: number) => (
+                          <ListItem key={index}>
+                            <ListItemIcon>
+                              <ErrorIcon />
+                            </ListItemIcon>
+                            <ListItemText
+                              primary={
+                                <>
+                                  Suspenso por <strong>{entry.duration}</strong>{" "}
+                                  - Termina em{" "}
+                                  <strong>
+                                    {calculateEndDate(
+                                      entry
+                                    ).toLocaleDateString()}
+                                  </strong>
+                                </>
+                              }
+                              secondary={entry.observation}
+                            />
+                          </ListItem>
+                        )
+                      )
+                    ) : (
+                      <Typography
+                        variant="subtitle1"
+                        sx={{ color: "grey" }}
+                        gutterBottom
+                      >
+                        Sem incidentes
+                      </Typography>
+                    )}
+                  </List>
+                </Box>
+
+                {/* Card adicionar novo Incidentes */}
+                <Box
+                  sx={{
+                    width: "100%",
+                    maxWidth: "800px",
+                    backgroundColor: "white",
+                    borderRadius: "8px",
+                    boxShadow: 3,
+                    padding: "20px",
+                    marginBottom: "20px",
+                  }}
+                >
+                  <Typography variant="h6" gutterBottom>
+                    Adicionar incidentes
+                  </Typography>
+
+                  <TextareaAutosize
+                    minRows={3}
+                    placeholder="Descreva o que aconteceu"
+                    value={newIncident}
+                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                      setNewIncident(e.target.value)
+                    }
+                    style={{
+                      width: "100%",
+                      padding: "10px",
+                      marginTop: "10px",
+                    }}
                   />
-                </ListItem>
-              ))
-            ) : (
-              <Typography variant="h6" gutterBottom>
-                Sem histórico
-              </Typography>
-            )}
-          </List>
-          <TextareaAutosize
-            minRows={3}
-            placeholder="Adicionar novo incidente"
-            value={newIncident}
-            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-              setNewIncident(e.target.value)
-            }
-            style={{ width: "100%", padding: "10px", marginTop: "10px" }}
-          />
-          <Box sx={{ marginTop: "20px" }}>
-            <Typography variant="body1" gutterBottom>
-              Selecionar Tempo de Suspensão:
-            </Typography>
-            <Select
-              value={suspensionTime}
-              onChange={handleSuspensionChange}
-              displayEmpty
-              fullWidth
-              sx={{ marginBottom: "20px" }}
-            >
-              <MenuItem value="" disabled>
-                Selecione um tempo
-              </MenuItem>
-              <MenuItem value="15 dias">15 dias</MenuItem>
-              <MenuItem value="30 dias">30 dias</MenuItem>
-              <MenuItem value="3 meses">3 meses</MenuItem>
-              <MenuItem value="6 meses">6 meses</MenuItem>
-            </Select>
-          </Box>
-        </Box>
+                  <Box sx={{ marginTop: "20px" }}>
+                    <Select
+                      value={suspensionTime}
+                      onChange={handleSuspensionChange}
+                      displayEmpty
+                      fullWidth
+                      sx={{ marginBottom: "20px" }}
+                    >
+                      <MenuItem value="" disabled>
+                        Tempo de suspensão
+                      </MenuItem>
+                      {Object.values(PenaltyDuration).map((duration) => (
+                        <MenuItem key={duration} value={duration}>
+                          {duration}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </Box>
+                  <Button
+                    variant="contained"
+                    onClick={handleAddIncident}
+                    disabled={!newIncident || !suspensionTime}
+                  >
+                    Adicionar Incidente
+                  </Button>
+                </Box>
 
-        {/* Botão Salvar */}
-        <Button
-          variant="contained"
-          disabled={errors}
-          sx={{
-            backgroundColor: "#26d07c",
-            marginTop: "20px",
-            "&:hover": {
-              backgroundColor: "#1fa968",
-            },
-          }}
-          onClick={handleSave}
-        >
-          Salvar
-        </Button>
-      </Container>
+                {/* Botão Salvar */}
+                <Button
+                  variant="contained"
+                  disabled={errors}
+                  sx={{
+                    backgroundColor: "#26d07c",
+                    marginTop: "20px",
+                    "&:hover": {
+                      backgroundColor: "#1fa968",
+                    },
+                  }}
+                  onClick={handleSaveUser}
+                >
+                  Salvar
+                </Button>
+              </Container>
+              <Snackbar
+                open={snackbarOpen}
+                autoHideDuration={5000} // Fecha automaticamente após 6 segundos
+                onClose={handleCloseSnackbar}
+              >
+                <Alert
+                  onClose={handleCloseSnackbar}
+                  severity={snackbarSeverity}
+                  sx={{ width: "100%" }}
+                >
+                  {snackbarMessage}
+                </Alert>
+              </Snackbar>
+            </>
+          )}
+        </Box>
+      </LocalizationProvider>
     </div>
   );
 };
