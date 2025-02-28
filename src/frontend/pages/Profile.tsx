@@ -7,7 +7,6 @@ import {
   Typography,
   Box,
   Button,
-  List,
   ListItem,
   ListItemText,
   AppBar,
@@ -24,6 +23,7 @@ import {
   SelectChangeEvent,
   CircularProgress,
   ListItemIcon,
+  List as MuiList,
 } from "@mui/material";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
@@ -44,6 +44,8 @@ import {
   PenaltyDuration,
   UserProfile,
   UserPromotorProfile,
+  List,
+  IListHistory,
 } from "../types";
 import { DatePicker } from "@mui/x-date-pickers";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
@@ -65,7 +67,7 @@ const modalStyle = {
 };
 
 const Profile: React.FC = () => {
-  const [lista, setLista] = useState<{ id: string; name: string }[]>([]);
+  const [lista, setLista] = useState<List[]>([]);
   const [searchParams] = useSearchParams();
   const cpf = (searchParams.get("cpf") || "").replace(/\D/g, "");
   const navigate = useNavigate();
@@ -136,17 +138,18 @@ const Profile: React.FC = () => {
     setOpenModal(false);
   };
 
-  const handleSelectList = (promoter: { id: string; name: string }) => {
+  const handleSelectList = (id: string) => {
     // Atualiza o estado profileData
     setProfileData((prevProfileData) => ({
       ...prevProfileData,
-      currentLists: [promoter.id], // Adiciona o ID da lista
+      currentLists: [id], // Adiciona o ID da lista
       history: [
         ...prevProfileData.history,
         {
-          listId: promoter.id, // ID da lista
+          listId: id, // ID da lista
+          name: lista.find((list) => list._id === id)?.title || "", // Adiciona o nome da lista
           joinedAt: new Date(), // Data de entrada
-          leftAt: undefined, // Data de saída (indefinida por enquanto)
+          leftAt: lista.find((list) => list._id === id)?.endDate, // Data de saída (indefinida por enquanto)
         },
       ],
       profile: UserProfile.Common, // Ou outro perfil, se necessário
@@ -294,14 +297,14 @@ const Profile: React.FC = () => {
                 {/* Chip dinâmico */}
                 <Chip
                   label={
-                    profileData.profile == UserPromotorProfile.Promoter
+                    profileData.profile == UserProfile.Promoter
                       ? `Promotor: ${profileData.name}`
                       : profileData.currentLists.length === 0
                         ? "O usuário não está numa lista"
                         : `LISTA: ${lista}`
                   }
                   color={
-                    profileData.profile == UserPromotorProfile.Promoter ||
+                    profileData.profile == UserProfile.Promoter ||
                     profileData.currentLists.length > 0
                       ? "primary"
                       : "warning"
@@ -317,8 +320,8 @@ const Profile: React.FC = () => {
 
                 {/* Botão de adicionar (aparece apenas se a lista estiver vazia) */}
                 {profileData.profile ==
-                UserPromotorProfile.Promoter ? undefined : !profileData
-                    .currentLists.length ? (
+                UserProfile.Promoter ? undefined : !profileData.currentLists
+                    .length ? (
                   <IconButton
                     onClick={handleOpenModal}
                     sx={{
@@ -389,12 +392,12 @@ const Profile: React.FC = () => {
                       Selecione uma Lista
                     </Typography>
                     {lista.length ? (
-                      <List>
+                      <MuiList>
                         {lista.map((listas, index) => (
                           <ListItem
                             component="li"
                             key={index}
-                            onClick={() => handleSelectList(listas)}
+                            onClick={() => handleSelectList(listas._id)}
                             sx={{
                               cursor: "pointer", // Cursor pointer para indicar que é clicável
                               "&:hover": {
@@ -402,10 +405,10 @@ const Profile: React.FC = () => {
                               },
                             }}
                           >
-                            <ListItemText primary={listas.name} />
+                            <ListItemText primary={listas.title} />
                           </ListItem>
                         ))}
-                      </List>
+                      </MuiList>
                     ) : (
                       <Typography
                         variant="subtitle2"
@@ -555,16 +558,18 @@ const Profile: React.FC = () => {
                   <Typography variant="h6" gutterBottom>
                     Histórico de Entradas
                   </Typography>
-                  <List>
+                  <MuiList>
                     {profileData.history.length ? (
-                      profileData.history.map((entry: any, index: number) => (
-                        <ListItem key={index}>
-                          <ListItemText
-                            primary={`${entry.date} às ${entry.time}`}
-                            secondary={entry.event}
-                          />
-                        </ListItem>
-                      ))
+                      profileData.history.map(
+                        (entry: IListHistory, index: number) => (
+                          <ListItem key={index}>
+                            <ListItemText
+                              primary={entry.name}
+                              secondary={`${entry.joinedAt}`}
+                            />
+                          </ListItem>
+                        )
+                      )
                     ) : (
                       <Typography
                         variant="subtitle1"
@@ -574,7 +579,7 @@ const Profile: React.FC = () => {
                         Sem histórico de entradas
                       </Typography>
                     )}
-                  </List>
+                  </MuiList>
                 </Box>
 
                 {/* Card histórico de Incidentes */}
@@ -592,7 +597,7 @@ const Profile: React.FC = () => {
                   <Typography variant="h6" gutterBottom>
                     Histórico de incidentes
                   </Typography>
-                  <List>
+                  <MuiList>
                     {profileData.penalties.length ? (
                       profileData.penalties.map(
                         (entry: IPenalty, index: number) => (
@@ -626,7 +631,7 @@ const Profile: React.FC = () => {
                         Sem incidentes
                       </Typography>
                     )}
-                  </List>
+                  </MuiList>
                 </Box>
 
                 {/* Card adicionar novo Incidentes */}

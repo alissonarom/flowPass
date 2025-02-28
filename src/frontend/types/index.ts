@@ -13,7 +13,8 @@ export enum UserPromotorProfile {
 
 // Interface para o histórico de listas
 export interface IListHistory {
-  listId: string; // No frontend, podemos usar string em vez de ObjectId
+  listId: string;
+  name: string; // No frontend, podemos usar string em vez de ObjectId
   joinedAt: Date;
   leftAt?: Date;
 }
@@ -48,7 +49,7 @@ export interface IUser {
 }
 
 export interface List {
-  id: string;
+  _id: string;
   title: string;
   promotor: IPromoter;
   users: IUser[];
