@@ -531,7 +531,9 @@ const CriarLista: React.FC = () => {
                 >
                   <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                     <Typography>
-                      {list.title} - Promotor {list.promoter}
+                      {list.title} - Promotor: {list.promotor.name} - de{" "}
+                      {list.startDate.toLocaleDateString()} a{" "}
+                      {list.endDate.toLocaleDateString()}
                     </Typography>
                     <Button
                       onClick={() => handleOpenModalList(index)}

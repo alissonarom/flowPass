@@ -50,8 +50,10 @@ export interface IUser {
 export interface List {
   id: string;
   title: string;
-  promoter: number;
+  promotor: IPromoter;
   users: IUser[];
+  startDate: Date;
+  endDate: Date;
 }
 
 export interface IPromoter {
