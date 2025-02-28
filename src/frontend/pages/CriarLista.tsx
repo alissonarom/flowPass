@@ -71,7 +71,7 @@ const CriarLista: React.FC = () => {
     anniversary: false,
     history: [],
     penalties: [],
-    currentLists: [],
+    currentLists: "",
     cash: new Decimal128("0"),
   });
   const [errorCpf, setErrorCpf] = useState<boolean>(false);
@@ -532,8 +532,8 @@ const CriarLista: React.FC = () => {
                   <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                     <Typography>
                       {list.title} - Promotor: {list.promotor.name} - de{" "}
-                      {list.startDate.toLocaleDateString()} a{" "}
-                      {list.endDate.toLocaleDateString()}
+                      {new Date(list.startDate).toLocaleDateString()} a{" "}
+                      {new Date(list.endDate).toLocaleDateString()}
                     </Typography>
                     <Button
                       onClick={() => handleOpenModalList(index)}

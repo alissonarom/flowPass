@@ -81,7 +81,7 @@ const Profile: React.FC = () => {
     anniversary: false,
     history: [],
     penalties: [],
-    currentLists: [],
+    currentLists: "",
     cash: new Decimal128("0"),
   });
   const [newIncident, setNewIncident] = useState("");
@@ -142,7 +142,7 @@ const Profile: React.FC = () => {
     // Atualiza o estado profileData
     setProfileData((prevProfileData) => ({
       ...prevProfileData,
-      currentLists: [id], // Adiciona o ID da lista
+      currentLists: id, // Adiciona o ID da lista
       history: [
         ...prevProfileData.history,
         {
@@ -162,13 +162,13 @@ const Profile: React.FC = () => {
   const handleRemoveFromList = () => {
     setProfileData((prevProfileData) => {
       // Verifica se o usuário está em uma lista
-      if (prevProfileData.currentLists.length === 0) {
+      if (prevProfileData.currentLists) {
         return prevProfileData; // Retorna sem alterações se não estiver em uma lista
       }
 
       // Atualiza o histórico para registrar a saída da lista
       const updatedHistory = prevProfileData.history.map((entry) => {
-        if (entry.listId === prevProfileData.currentLists[0] && !entry.leftAt) {
+        if (entry.listId === prevProfileData.currentLists && !entry.leftAt) {
           return { ...entry, leftAt: new Date() }; // Adiciona a data de saída
         }
         return entry;
@@ -177,7 +177,7 @@ const Profile: React.FC = () => {
       // Retorna o novo estado
       return {
         ...prevProfileData,
-        currentLists: [], // Limpa a lista atual
+        currentLists: "", // Limpa a lista atual
         history: updatedHistory, // Atualiza o histórico
       };
     });
@@ -301,7 +301,7 @@ const Profile: React.FC = () => {
                       ? `Promotor: ${profileData.name}`
                       : profileData.currentLists.length === 0
                         ? "O usuário não está numa lista"
-                        : `LISTA: ${lista}`
+                        : `LISTA: ${lista.find((list) => list._id === profileData.currentLists)?.title}`
                   }
                   color={
                     profileData.profile == UserProfile.Promoter ||
@@ -565,7 +565,7 @@ const Profile: React.FC = () => {
                           <ListItem key={index}>
                             <ListItemText
                               primary={entry.name}
-                              secondary={`${entry.joinedAt}`}
+                              secondary={entry.joinedAt.toLocaleDateString()}
                             />
                           </ListItem>
                         )

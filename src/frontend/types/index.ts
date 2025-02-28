@@ -44,7 +44,7 @@ export interface IUser {
   anniversary: boolean;
   history: IListHistory[];
   penalties: IPenalty[];
-  currentLists: string[];
+  currentLists: string;
   cash: mongoose.Types.Decimal128;
 }
 
