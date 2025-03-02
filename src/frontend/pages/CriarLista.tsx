@@ -229,11 +229,14 @@ const CriarLista: React.FC = () => {
         endDate: endDate,
         users: [], // IDs dos usuários
       };
-      console.log("Nova lista:", newList);
 
       try {
         const createdList = await createList(newList);
-        setLists((prevLists) => [...prevLists, createdList]);
+
+        // Recarrega as listas após a criação
+        const updatedLists = await getLists();
+        setLists(updatedLists);
+
         setSnackbarMessage("Lista criada com sucesso!");
         setSnackbarSeverity("success");
         setSnackbarOpen(true);

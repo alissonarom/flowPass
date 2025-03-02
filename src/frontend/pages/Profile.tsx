@@ -565,7 +565,9 @@ const Profile: React.FC = () => {
                           <ListItem key={index}>
                             <ListItemText
                               primary={entry.name}
-                              secondary={entry.joinedAt.toLocaleDateString()}
+                              secondary={new Date(
+                                entry.joinedAt
+                              ).toLocaleDateString()}
                             />
                           </ListItem>
                         )
