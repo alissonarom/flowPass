@@ -3,6 +3,20 @@ import { IPromoter, IUser } from "../types";
 
 const API_URL = process.env.REACT_APP_API_FP_BE;
 
+interface User {
+  id: string;
+  name: string;
+  cpf: string;
+  profile: string;
+  client_id: string;
+}
+
+// Interface para a resposta da API
+interface LoginResponse {
+  token: string;
+  user: User;
+}
+
 // USERS -----------
 // Buscar todos os usuários
 export const getUsers = async () => {
@@ -13,7 +27,15 @@ export const getUsers = async () => {
 // Buscar perfil do usuário por CPF
 export const getUserProfileByCpf = async (cpf: string) => {
   try {
-    const response = await axios.get(`${API_URL}/users/${cpf}`);
+    const token = localStorage.getItem("token"); // Recupera o token do localStorage
+    if (!token) {
+      throw new Error("Token de autenticação não encontrado");
+    }
+    const response = await axios.get(`${API_URL}/users/${cpf}`, {
+      headers: {
+        Authorization: `Bearer ${token}`, // Envia o token no cabeçalho
+      },
+    });
     return response.data; // Retorna os dados do usuário ou null
   } catch (error) {
     console.error("Erro ao buscar perfil do usuário:", error);
@@ -24,7 +46,18 @@ export const getUserProfileByCpf = async (cpf: string) => {
 // Criar ou atualizar usuário
 export const createOrUpdateUser = async (userData: IUser) => {
   try {
-    const response = await axios.post(`${API_URL}/users`, userData);
+    const token = localStorage.getItem("token"); // Recupera o token do localStorage
+    if (!token) {
+      throw new Error("Token de autenticação não encontrado");
+    }
+
+    console.log("token", token);
+
+    const response = await axios.post(`${API_URL}/users`, userData, {
+      headers: {
+        Authorization: `Bearer ${token}`, // Adiciona o token no cabeçalho
+      },
+    });
     return response.data;
   } catch (error) {
     console.error("Erro ao criar/atualizar usuário:", error);
@@ -148,6 +181,43 @@ export const updatePromoter = async (
     return response.data;
   } catch (error) {
     console.error("Erro ao atualizar promotor:", error);
+    throw error;
+  }
+};
+
+export const handleLogin = async (
+  cpf: string,
+  password: string
+): Promise<LoginResponse> => {
+  try {
+    // Faz a requisição de login
+    const response = await axios.post<LoginResponse>(`${API_URL}/login`, {
+      cpf,
+      password,
+    });
+
+    // Armazena o token no localStorage
+    localStorage.setItem("token", response.data.token);
+
+    // Armazena os dados do usuário no localStorage
+    localStorage.setItem("user", JSON.stringify(response.data.user));
+
+    // Retorna os dados da resposta
+    return response.data;
+  } catch (error) {
+    console.error("Erro ao fazer login:", error);
+    throw error;
+  }
+};
+
+export const removeUserFromList = async (listId: string, userId: string) => {
+  try {
+    const response = await axios.delete(
+      `${API_URL}/lists/${listId}/users/${userId}`
+    );
+    return response.data;
+  } catch (error) {
+    console.error("Erro ao remover o usuário da lista:", error);
     throw error;
   }
 };

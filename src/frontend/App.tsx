@@ -9,6 +9,7 @@ import theme from "./styles/theme";
 import Login from "./pages/Login";
 import Profile from "./pages/Profile";
 import CriarLista from "./pages/CriarLista";
+import Checkin from "./pages/Checkin";
 
 const App: React.FC = () => {
   return (
@@ -17,6 +18,7 @@ const App: React.FC = () => {
       <Router>
         <Routes>
           <Route path="/" element={<Login />} />
+          <Route path="/checkin" element={<Checkin />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/criarLista" element={<CriarLista />} />
         </Routes>

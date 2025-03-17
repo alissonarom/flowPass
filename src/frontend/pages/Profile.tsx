@@ -24,35 +24,37 @@ import {
   CircularProgress,
   ListItemIcon,
   List as MuiList,
+  useMediaQuery,
+  Tooltip,
+  Menu,
 } from "@mui/material";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import Chip from "@mui/material/Chip";
 import Stack from "@mui/material/Stack";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
+import MenuIcon from "@mui/icons-material/Menu";
 import ErrorIcon from "@mui/icons-material/Error";
 import {
   createOrUpdateUser,
   getLists,
   getUserProfileByCpf,
+  updateList,
 } from "../services/index";
-import {
-  IPenalty,
-  IUser,
-  PenaltyDuration,
-  UserProfile,
-  UserPromotorProfile,
-  List,
-  IListHistory,
-} from "../types";
+import { IPenalty, IUser, PenaltyDuration, List, IListHistory } from "../types";
 import { DatePicker } from "@mui/x-date-pickers";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
 import { ptBR } from "date-fns/locale";
-import { calculateEndDate, formatPhoneNumber } from "../utils";
-import { Decimal128 } from "bson";
+import {
+  calculateEndDate,
+  formatPhoneNumber,
+  getUserFromLocalStorage,
+  useLogout,
+} from "../utils";
+import { AccountCircle, GppMaybe } from "@mui/icons-material";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 
 const modalStyle = {
   position: "absolute",
@@ -67,22 +69,23 @@ const modalStyle = {
 };
 
 const Profile: React.FC = () => {
+  const user = getUserFromLocalStorage();
   const [lista, setLista] = useState<List[]>([]);
   const [searchParams] = useSearchParams();
   const cpf = (searchParams.get("cpf") || "").replace(/\D/g, "");
-  const navigate = useNavigate();
   const [profileData, setProfileData] = useState<IUser>({
     name: "",
     cpf: cpf,
     birthDate: null,
     phone: "",
     gender: "",
-    profile: UserProfile.Common,
+    profile: "",
     anniversary: false,
     history: [],
     penalties: [],
-    currentLists: "",
-    cash: new Decimal128("0"),
+    currentLists: [],
+    cash: 0,
+    client_id: user?.client_id || "",
   });
   const [newIncident, setNewIncident] = useState("");
   const [errors, setErrors] = useState(
@@ -96,6 +99,20 @@ const Profile: React.FC = () => {
   const [snackbarSeverity, setSnackbarSeverity] = useState<"success" | "error">(
     "success"
   );
+  const [anchorElUser, setAnchorElUser] = React.useState<null | HTMLElement>(
+    null
+  );
+  const isAmorChurch = user?.client_id === "amorChurch";
+  const isDesktop = useMediaQuery("(min-width: 768px)");
+  const settings = ["Perfil", "Logout"];
+  const [activePenalties, setActivePenalties] = useState<boolean>(false);
+  const navigate = useNavigate();
+
+  const isPenaltyActive = (penalty: IPenalty): boolean => {
+    const today = new Date();
+    const endDate = calculateEndDate(penalty);
+    return today <= endDate; // Retorna true se a penalidade estiver vigente
+  };
 
   const handleAddIncident = () => {
     if (!newIncident || !suspensionTime) {
@@ -113,12 +130,22 @@ const Profile: React.FC = () => {
       ...prevProfileData,
       penalties: [...prevProfileData.penalties, newPenalty],
     }));
-
-    setNewIncident("");
-    setSuspensionTime("");
+    try {
+      createOrUpdateUser(profileData);
+      setSnackbarMessage("Incidente salvo com sucesso!");
+      setSnackbarSeverity("success");
+      setSnackbarOpen(true);
+      setNewIncident("");
+      setSuspensionTime("");
+    } catch (error) {
+      console.error("Erro ao salvar", error);
+      setSnackbarMessage("Falha ao salvar Incidente. Tente novamente");
+      setSnackbarSeverity("error");
+      setSnackbarOpen(true);
+    }
   };
 
-  const handleChange = (field: string, value: string | null | Date) => {
+  const handleChange = (field: keyof IUser, value: string | null | Date) => {
     let formattedValue = value;
 
     // Formata a data para o padrão ISO (backend espera "1990-01-15T00:00:00.000Z")
@@ -138,65 +165,118 @@ const Profile: React.FC = () => {
     setOpenModal(false);
   };
 
-  const handleSelectList = (id: string) => {
-    // Atualiza o estado profileData
-    setProfileData((prevProfileData) => ({
-      ...prevProfileData,
-      currentLists: id, // Adiciona o ID da lista
-      history: [
-        ...prevProfileData.history,
-        {
-          listId: id, // ID da lista
-          name: lista.find((list) => list._id === id)?.title || "", // Adiciona o nome da lista
-          joinedAt: new Date(), // Data de entrada
-          leftAt: lista.find((list) => list._id === id)?.endDate, // Data de saída (indefinida por enquanto)
-        },
-      ],
-      profile: UserProfile.Common, // Ou outro perfil, se necessário
-    }));
+  const handleSelectList = async (id: string) => {
+    try {
+      // Verifica se o usuário já está na lista
+      const userAlreadyInList = profileData.currentLists.includes(id);
 
-    // Fecha o modal
-    handleCloseModal();
-  };
-
-  const handleRemoveFromList = () => {
-    setProfileData((prevProfileData) => {
-      // Verifica se o usuário está em uma lista
-      if (prevProfileData.currentLists) {
-        return prevProfileData; // Retorna sem alterações se não estiver em uma lista
+      if (userAlreadyInList) {
+        setSnackbarMessage("Usuário já está nesta lista");
+        setSnackbarSeverity("error");
+        setSnackbarOpen(true);
+        return;
       }
 
-      // Atualiza o histórico para registrar a saída da lista
-      const updatedHistory = prevProfileData.history.map((entry) => {
-        if (entry.listId === prevProfileData.currentLists && !entry.leftAt) {
-          return { ...entry, leftAt: new Date() }; // Adiciona a data de saída
-        }
-        return entry;
+      // Verifica se o usuário já tem um registro de entrada na lista
+      const hasExistingEntry = profileData.history.some(
+        (entry) => entry.listId === id
+      );
+
+      // Atualiza o estado profileData (localmente)
+      setProfileData((prevProfileData) => ({
+        ...prevProfileData,
+        currentLists: [id], // Adiciona o ID da lista
+        history: hasExistingEntry
+          ? prevProfileData.history // Mantém o histórico existente
+          : [
+              ...prevProfileData.history,
+              {
+                listId: id, // ID da lista
+                name: lista.find((list) => list._id === id)?.title || "", // Nome da lista
+                joinedAt: new Date(), // Data de entrada
+                leftAt: lista.find((list) => list._id === id)?.endDate, // Data de saída
+              },
+            ],
+      }));
+
+      // Fecha o modal
+      handleCloseModal();
+
+      console.log("Usuário adicionado à lista (localmente).");
+    } catch (error) {
+      console.error("Erro ao adicionar usuário à lista:", error);
+    }
+  };
+
+  const handleRemoveFromList = async () => {
+    try {
+      // Verifica se o usuário está em uma lista ativa
+      if (!isUserInActiveList(profileData, lista)) {
+        console.log("O usuário não está em uma lista ativa.");
+        return;
+      }
+
+      // Obtém o ID da lista atual
+      const currentListId = profileData.currentLists[0]; // Assumindo que o usuário está em apenas uma lista
+
+      // Atualiza o estado local
+      setProfileData((prevProfileData) => {
+        const updatedHistory = prevProfileData.history.map((entry) => {
+          if (entry.listId === currentListId) {
+            return {
+              ...entry,
+              leftAt: new Date(), // Registra a data de saída
+            };
+          }
+          return entry;
+        });
+
+        return {
+          ...prevProfileData,
+          currentLists: [], // Limpa a lista atual
+          history: updatedHistory, // Atualiza o histórico
+        };
       });
 
-      // Retorna o novo estado
-      return {
-        ...prevProfileData,
-        currentLists: "", // Limpa a lista atual
-        history: updatedHistory, // Atualiza o histórico
-      };
-    });
+      setSnackbarMessage("Removido da lista (localmente)!");
+      setSnackbarSeverity("success");
+      setSnackbarOpen(true);
+    } catch (error) {
+      console.error("Erro ao remover o usuário da lista:", error);
+    }
   };
 
   const handleSaveUser = async () => {
     console.log("Salvando usuário:", profileData);
     try {
+      // 1. Atualiza o usuário no backend
       const user = await createOrUpdateUser(profileData);
 
+      // 2. Atualiza as listas no backend (se necessário)
+      if (profileData.currentLists.length > 0) {
+        const listId = profileData.currentLists[0]; // Assumindo que o usuário está em apenas uma lista
+        await updateList(listId, {
+          users: [
+            ...(lista
+              .find((list) => list._id === listId)
+              ?.users?.map((user) => user._id)
+              .filter((id): id is string => id !== undefined) || []), // Mapeia e filtra os _id dos usuários existentes
+            profileData._id ?? "", // Adiciona o _id do novo usuário ou uma string vazia como fallback
+          ],
+        });
+      }
+
       // Exibe mensagem de sucesso
-      setSnackbarMessage("Usuário salvo com sucesso!");
+      setSnackbarMessage("Informações do usuário salvas com sucesso!");
       setSnackbarSeverity("success");
       setSnackbarOpen(true);
     } catch (error) {
       console.error("Erro ao salvar/atualizar usuário:", error);
 
       // Exibe mensagem de erro
-      setSnackbarMessage("Erro ao salvar usuário. Tente novamente.");
+      setSnackbarMessage(
+        "Erro ao salvar informações do usuário. Tente novamente."
+      );
       setSnackbarSeverity("error");
       setSnackbarOpen(true);
     }
@@ -206,10 +286,45 @@ const Profile: React.FC = () => {
     setSnackbarOpen(false);
   };
 
-  // Função para lidar com a seleção do tempo de suspensão
   const handleSuspensionChange = (event: SelectChangeEvent<string>) => {
     setSuspensionTime(event.target.value as string);
   };
+
+  const handleCloseUserMenu = () => {
+    useLogout;
+    setAnchorElUser(null);
+  };
+
+  const handleOpenUserMenu = (event: React.MouseEvent<HTMLElement>) => {
+    setAnchorElUser(event.currentTarget);
+  };
+
+  const isUserInActiveList = (profileData: any, lista: any[]) => {
+    // Verifica se currentLists é um array
+    if (!Array.isArray(profileData.currentLists)) {
+      console.error("currentLists não é um array:", profileData.currentLists);
+      return false;
+    }
+
+    // Verifica se o usuário não está em nenhuma lista
+    if (profileData.currentLists.length === 0) {
+      return false;
+    }
+
+    // Filtra as listas ativas (endDate >= data atual)
+    const activeLists = lista.filter((list) => {
+      const endDate = new Date(list.endDate);
+      const today = new Date();
+      return endDate >= today;
+    });
+
+    // Verifica se o usuário está em alguma lista ativa
+    return profileData.currentLists.some((userListId: string) =>
+      activeLists.some((list) => list._id === userListId)
+    );
+  };
+
+  const logout = useLogout();
 
   useEffect(() => {
     const fetchUserProfile = async () => {
@@ -219,7 +334,10 @@ const Profile: React.FC = () => {
         const profile = await getUserProfileByCpf(cpf); // Usa a função do serviço
 
         if (profile) {
-          setProfileData(profile); // Define o perfil com os dados do backend
+          setProfileData({
+            ...profile,
+            profile: profile.profile, // Atribui o valor diretamente
+          });
         }
       } catch (error) {
         console.error("Erro ao buscar perfil do usuário:", error);
@@ -248,26 +366,97 @@ const Profile: React.FC = () => {
     fetchLists();
   }, []);
 
+  useEffect(() => {
+    const active = profileData.penalties.filter((penalty) =>
+      isPenaltyActive(penalty)
+    );
+    setActivePenalties(active.length > 0);
+  }, [profileData.penalties]);
+
   return (
     <div style={{ backgroundColor: "#EDEDED", minHeight: "100vh" }}>
       <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ptBR}>
         <AppBar
           position="static"
           sx={{
-            backgroundColor: "#00df81",
+            backgroundColor: "rgba(0, 223, 129, 0.85)",
             height: "65px",
             justifyContent: "center",
+            position: "fixed",
+            top: 0,
+            zIndex: 10,
           }}
         >
-          <Toolbar>
-            <IconButton onClick={() => navigate("/")} sx={{ color: "white" }}>
-              <ArrowBackIcon />
-            </IconButton>
-            <img
-              src="/logo-top-bar-bco.png"
-              alt="Logo"
-              style={{ width: "120px", height: "45px", marginLeft: "40px" }}
-            />
+          <Toolbar
+            sx={{
+              justifyContent: "space-between",
+              paddingInline: { xl: 10, md: 5, sm: 0 },
+            }}
+          >
+            <Box sx={{ flexGrow: 0 }} flexDirection="row" display={"flex"}>
+              <IconButton
+                onClick={() => navigate("/checkin")}
+                sx={{ color: "white" }}
+              >
+                <ArrowBackIcon />
+              </IconButton>
+              <Box
+                component="img"
+                src="/logo-top-bar-bco.png"
+                alt="Logo"
+                sx={{
+                  width: "120px",
+                  height: "45px",
+                  marginInline: { xs: "10px", sm: "20px" },
+                }}
+              />
+            </Box>
+
+            <Box sx={{ flexGrow: 0 }} flexDirection="row" display={"flex"}>
+              {isDesktop && (
+                <Typography variant="h6" sx={{ marginRight: "20px" }}>
+                  {user?.name}
+                </Typography>
+              )}
+              <Tooltip title="Open settings">
+                <IconButton onClick={handleOpenUserMenu} sx={{ p: 0 }}>
+                  {isDesktop ? <AccountCircle /> : <MenuIcon />}
+                </IconButton>
+              </Tooltip>
+              <Menu
+                sx={{ mt: "45px" }}
+                id="menu-appbar"
+                anchorEl={anchorElUser}
+                anchorOrigin={{
+                  vertical: "top",
+                  horizontal: "right",
+                }}
+                keepMounted
+                transformOrigin={{
+                  vertical: "top",
+                  horizontal: "right",
+                }}
+                open={Boolean(anchorElUser)}
+                onClose={handleCloseUserMenu}
+              >
+                {settings.map((setting) => (
+                  <MenuItem
+                    key={setting}
+                    onClick={() => {
+                      if (setting === "Logout") {
+                        logout(); // Chama a função logout
+                      } else {
+                        handleCloseUserMenu(); // Chama a função handleCloseUserMenu
+                      }
+                    }}
+                  >
+                    <Typography sx={{ textAlign: "center" }}>
+                      {setting}
+                    </Typography>
+                  </MenuItem>
+                ))}
+              </Menu>
+            </Box>
           </Toolbar>
         </AppBar>
         <Box
@@ -275,7 +464,7 @@ const Profile: React.FC = () => {
           display="flex"
           alignItems="center"
           justifyContent="center"
-          marginTop={{ xs: "65px", md: "30px" }}
+          paddingTop={{ xs: "85px" }}
           flexDirection={{ xs: "column", md: "column" }}
           sx={{
             backgroundColor: "#EDEDED",
@@ -295,73 +484,93 @@ const Profile: React.FC = () => {
                 }}
               >
                 {/* Chip dinâmico */}
-                <Chip
-                  label={
-                    profileData.profile == UserProfile.Promoter
-                      ? `Promotor: ${profileData.name}`
-                      : profileData.currentLists.length === 0
-                        ? "O usuário não está numa lista"
-                        : `LISTA: ${lista.find((list) => list._id === profileData.currentLists)?.title}`
-                  }
-                  color={
-                    profileData.profile == UserProfile.Promoter ||
-                    profileData.currentLists.length > 0
-                      ? "primary"
-                      : "warning"
-                  }
-                  sx={{
-                    width: "100%",
-                    justifyContent: "flex-start",
-                    minWidth: "250px",
-                    color: "white",
-                  }}
-                  size="medium"
-                />
+                {activePenalties ? (
+                  <Chip
+                    icon={<GppMaybe />}
+                    label={"Usuário com suspensão ativa"}
+                    color={"error"}
+                    variant="filled"
+                    sx={{
+                      width: "100%",
+                      "&.MuiChip-iconColor": {
+                        color: "red",
+                      },
+                      justifyContent: "flex-start",
+                      color: "white",
+                    }}
+                    size="medium"
+                  />
+                ) : (
+                  <Chip
+                    label={
+                      profileData.profile == "Promotor"
+                        ? `Promotor: ${profileData.name}`
+                        : !isUserInActiveList(profileData, lista)
+                          ? "Adicione o usuário numa lista"
+                          : `LISTA: ${lista.find((list) => list._id === profileData.currentLists[0])?.title}`
+                    }
+                    color={
+                      profileData.profile == "Promotor" ||
+                      isUserInActiveList(profileData, lista)
+                        ? "primary"
+                        : "warning"
+                    }
+                    sx={{
+                      width: "100%",
+                      justifyContent: "flex-start",
+                      minWidth: "250px",
+                      color: "white",
+                    }}
+                    size="medium"
+                  />
+                )}
 
                 {/* Botão de adicionar (aparece apenas se a lista estiver vazia) */}
-                {profileData.profile ==
-                UserProfile.Promoter ? undefined : !profileData.currentLists
-                    .length ? (
-                  <IconButton
-                    onClick={handleOpenModal}
-                    sx={{
-                      color: "white",
-                      backgroundColor: "#ed6c02",
-                      "&:hover": { backgroundColor: "#f3862d" },
-                    }}
-                  >
-                    <AddIcon />
-                  </IconButton>
-                ) : (
-                  <IconButton
-                    onClick={handleOpenModal}
-                    sx={{
-                      color: "white",
-                      backgroundColor: "#26d07c",
-                      "&:hover": {
-                        backgroundColor: "#1fa968",
-                      },
-                    }}
-                  >
-                    <EditIcon />
-                  </IconButton>
-                )}
-                {profileData.profile !== UserPromotorProfile.Promoter &&
-                profileData.currentLists.length ? (
-                  <IconButton
-                    onClick={handleRemoveFromList} // Chama a função para remover da lista
-                    sx={{
-                      color: "white",
-                      backgroundColor: "#26d07c",
-                      "&:hover": {
-                        backgroundColor: "#1fa968",
-                      },
-                    }}
-                  >
-                    <DeleteIcon />
-                  </IconButton>
-                ) : undefined}
-                {profileData.profile == UserPromotorProfile.Promoter && (
+
+                {!activePenalties && profileData.profile !== "Promotor" ? (
+                  !isUserInActiveList(profileData, lista) ? (
+                    <IconButton
+                      onClick={handleOpenModal}
+                      sx={{
+                        color: "white",
+                        backgroundColor: "#ed6c02",
+                        "&:hover": { backgroundColor: "#f3862d" },
+                      }}
+                    >
+                      <AddIcon />
+                    </IconButton>
+                  ) : (
+                    <>
+                      <IconButton
+                        onClick={handleOpenModal}
+                        sx={{
+                          gap: "10px",
+                          color: "white",
+                          backgroundColor: "#26d07c",
+                          "&:hover": {
+                            backgroundColor: "#1fa968",
+                          },
+                        }}
+                      >
+                        <EditIcon />
+                      </IconButton>
+                      <IconButton
+                        onClick={handleRemoveFromList} // Chama a função para remover da lista
+                        sx={{
+                          gap: "10px",
+                          color: "white",
+                          backgroundColor: "#26d07c",
+                          "&:hover": {
+                            backgroundColor: "#1fa968",
+                          },
+                        }}
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </>
+                  )
+                ) : null}
+                {profileData.profile == "Promotor" && (
                   <Box
                     sx={{
                       flexDirection: "row",
@@ -381,7 +590,9 @@ const Profile: React.FC = () => {
                       gutterBottom
                       sx={{ display: "block", color: "#03624c" }}
                     >
-                      4,20
+                      {profileData.cash.toString() === "0"
+                        ? "0,00"
+                        : profileData.cash.toString()}
                     </Typography>
                   </Box>
                 )}
@@ -393,21 +604,41 @@ const Profile: React.FC = () => {
                     </Typography>
                     {lista.length ? (
                       <MuiList>
-                        {lista.map((listas, index) => (
-                          <ListItem
-                            component="li"
-                            key={index}
-                            onClick={() => handleSelectList(listas._id)}
-                            sx={{
-                              cursor: "pointer", // Cursor pointer para indicar que é clicável
-                              "&:hover": {
-                                backgroundColor: "#CAFFD2", // Cor de fundo ao passar o mouse
-                              },
-                            }}
-                          >
-                            <ListItemText primary={listas.title} />
-                          </ListItem>
-                        ))}
+                        {lista
+                          .filter((listas) => {
+                            const endDate = new Date(listas.endDate);
+                            const today = new Date();
+
+                            // Remove o horário das datas para comparar apenas o dia
+                            const endDateWithoutTime = new Date(
+                              endDate.getFullYear(),
+                              endDate.getMonth(),
+                              endDate.getDate()
+                            );
+                            const todayWithoutTime = new Date(
+                              today.getFullYear(),
+                              today.getMonth(),
+                              today.getDate()
+                            );
+
+                            // Mantém apenas listas com endDate >= hoje
+                            return endDateWithoutTime >= todayWithoutTime;
+                          })
+                          .map((listas, index) => (
+                            <ListItem
+                              component="li"
+                              key={index}
+                              onClick={() => handleSelectList(listas._id)}
+                              sx={{
+                                cursor: "pointer", // Cursor pointer para indicar que é clicável
+                                "&:hover": {
+                                  backgroundColor: "#CAFFD2", // Cor de fundo ao passar o mouse
+                                },
+                              }}
+                            >
+                              <ListItemText primary={listas.title} />
+                            </ListItem>
+                          ))}
                       </MuiList>
                     ) : (
                       <Typography
@@ -520,26 +751,52 @@ const Profile: React.FC = () => {
                         <MenuItem value="Masculino">Masculino</MenuItem>
                       </TextField>
                     </Grid>
-                    <Grid item xs={6}>
-                      <TextField
-                        select
-                        label="Perfil"
-                        value={profileData.profile}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                          handleChange("profile", e.target.value)
-                        }
-                        fullWidth
-                        margin="normal"
-                        error={profileData.profile ? false : true}
-                        helperText={
-                          profileData.profile ? "" : "Campo obrigatório"
-                        }
-                      >
-                        <MenuItem value="Promotor">Promotor</MenuItem>
-                        <MenuItem value="Usuário">Usuário</MenuItem>
-                        <MenuItem value="Funcionário">Funcionário</MenuItem>
-                      </TextField>
-                    </Grid>
+                    {isAmorChurch ? (
+                      <Grid item xs={6}>
+                        <TextField
+                          select
+                          label="Perfil"
+                          name="profile"
+                          value={profileData.profile} // Garante que o valor seja uma string
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                            handleChange("profile", e.target.value)
+                          }
+                          fullWidth
+                          error={!profileData.profile} // Exibe erro se o campo estiver vazio
+                          helperText={
+                            !profileData.profile ? "Campo obrigatório" : ""
+                          } // Mensagem de erro
+                          margin="normal"
+                        >
+                          <MenuItem value="Diretoria">Diretoria</MenuItem>
+                          <MenuItem value="Mentoria">Mentoria</MenuItem>
+                          <MenuItem value="Aluno">Aluno</MenuItem>
+                        </TextField>
+                      </Grid>
+                    ) : (
+                      <Grid item xs={6}>
+                        <TextField
+                          select
+                          label="Perfil"
+                          name="profile"
+                          value={profileData.profile} // Garante que o valor seja uma string
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                            handleChange("profile", e.target.value)
+                          }
+                          fullWidth
+                          error={!profileData.profile} // Exibe erro se o campo estiver vazio
+                          helperText={
+                            !profileData.profile ? "Campo obrigatório" : ""
+                          } // Mensagem de erro
+                          margin="normal"
+                        >
+                          <MenuItem value="Promotor">Promotor</MenuItem>
+                          <MenuItem value="Usuário">Usuário</MenuItem>
+                          <MenuItem value="Funcionário">Funcionário</MenuItem>
+                          <MenuItem value="Funcionário">Administrador</MenuItem>
+                        </TextField>
+                      </Grid>
+                    )}
                   </Grid>
                 </Box>
 
@@ -584,57 +841,62 @@ const Profile: React.FC = () => {
                   </MuiList>
                 </Box>
 
-                {/* Card histórico de Incidentes */}
-                <Box
-                  sx={{
-                    width: "100%",
-                    maxWidth: "800px",
-                    backgroundColor: "white",
-                    borderRadius: "8px",
-                    boxShadow: 3,
-                    padding: "20px",
-                    marginBottom: "20px",
-                  }}
-                >
-                  <Typography variant="h6" gutterBottom>
-                    Histórico de incidentes
-                  </Typography>
-                  <MuiList>
-                    {profileData.penalties.length ? (
-                      profileData.penalties.map(
-                        (entry: IPenalty, index: number) => (
-                          <ListItem key={index}>
-                            <ListItemIcon>
-                              <ErrorIcon />
-                            </ListItemIcon>
-                            <ListItemText
-                              primary={
-                                <>
-                                  Suspenso por <strong>{entry.duration}</strong>{" "}
-                                  - Termina em{" "}
-                                  <strong>
-                                    {calculateEndDate(
-                                      entry
-                                    ).toLocaleDateString()}
-                                  </strong>
-                                </>
-                              }
-                              secondary={entry.observation}
-                            />
-                          </ListItem>
-                        )
-                      )
-                    ) : (
-                      <Typography
-                        variant="subtitle1"
-                        sx={{ color: "grey" }}
-                        gutterBottom
-                      >
-                        Sem incidentes
+                {!isAmorChurch && (
+                  <>
+                    {/* Card histórico de Incidentes */}
+                    <Box
+                      sx={{
+                        width: "100%",
+                        maxWidth: "800px",
+                        backgroundColor: "white",
+                        borderRadius: "8px",
+                        boxShadow: 3,
+                        padding: "20px",
+                        marginBottom: "20px",
+                      }}
+                    >
+                      <Typography variant="h6" gutterBottom>
+                        Histórico de incidentes
                       </Typography>
-                    )}
-                  </MuiList>
-                </Box>
+                      <MuiList>
+                        {profileData.penalties.length ? (
+                          profileData.penalties.map(
+                            (entry: IPenalty, index: number) => (
+                              <ListItem key={index}>
+                                <ListItemIcon>
+                                  <ErrorIcon />
+                                </ListItemIcon>
+                                <ListItemText
+                                  primary={
+                                    <>
+                                      Suspenso por{" "}
+                                      <strong>{entry.duration}</strong> -
+                                      Termina em{" "}
+                                      <strong>
+                                        {calculateEndDate(
+                                          entry
+                                        ).toLocaleDateString()}
+                                      </strong>
+                                    </>
+                                  }
+                                  secondary={entry.observation}
+                                />
+                              </ListItem>
+                            )
+                          )
+                        ) : (
+                          <Typography
+                            variant="subtitle1"
+                            sx={{ color: "grey" }}
+                            gutterBottom
+                          >
+                            Sem incidentes
+                          </Typography>
+                        )}
+                      </MuiList>
+                    </Box>
+                  </>
+                )}
 
                 {/* Card adicionar novo Incidentes */}
                 <Box
@@ -691,8 +953,6 @@ const Profile: React.FC = () => {
                     Adicionar Incidente
                   </Button>
                 </Box>
-
-                {/* Botão Salvar */}
                 <Button
                   variant="contained"
                   disabled={errors}
@@ -705,7 +965,7 @@ const Profile: React.FC = () => {
                   }}
                   onClick={handleSaveUser}
                 >
-                  Salvar
+                  Check-in
                 </Button>
               </Container>
               <Snackbar

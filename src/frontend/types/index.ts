@@ -1,14 +1,11 @@
-import mongoose from "mongoose";
-
 // Enums para os valores fixos
 export enum UserProfile {
-  Common = "Usuário",
+  Usuário = "Usuário",
+  Promoter = "Promotor",
+  Administrador = "Administrador",
   Employee = "Funcionário",
-  Promoter = "Promotor",
-}
-
-export enum UserPromotorProfile {
-  Promoter = "Promotor",
+  Mentoria = "Mentoria",
+  Diretoria = "Diretoria",
 }
 
 // Interface para o histórico de listas
@@ -35,23 +32,26 @@ export interface IPenalty {
 
 // Interface principal do usuário
 export interface IUser {
+  _id?: string;
   name: string;
   cpf: string;
   birthDate: Date | null;
   phone: string;
   gender: string;
-  profile: UserProfile | UserPromotorProfile;
+  profile: string;
   anniversary: boolean;
   history: IListHistory[];
   penalties: IPenalty[];
-  currentLists: string;
-  cash: mongoose.Types.Decimal128;
+  currentLists: string[];
+  cash: number;
+  client_id: string;
+  password?: string;
 }
 
 export interface List {
   _id: string;
   title: string;
-  promotor: IPromoter;
+  promotor: IUser;
   users: IUser[];
   startDate: Date;
   endDate: Date;
@@ -64,5 +64,13 @@ export interface IPromoter {
   birthDate: Date | null;
   phone: string;
   gender: string;
-  cash: mongoose.Types.Decimal128;
+  cash: number;
+}
+
+export interface UserLocalStorage {
+  id: string;
+  name: string;
+  cpf: string;
+  profile: string;
+  client_id: string;
 }

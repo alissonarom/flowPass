@@ -1,4 +1,5 @@
-import { IPenalty, PenaltyDuration } from "../types";
+import { useNavigate } from "react-router-dom";
+import { IPenalty, PenaltyDuration, UserLocalStorage } from "../types";
 
 export const handleCpfChange = (value: string | null | undefined): string => {
   // Se o valor for null ou undefined, substitui por uma string vazia
@@ -69,4 +70,37 @@ export const calculateEndDate = (penalty: IPenalty): Date => {
   const endDate = new Date(penalty.startDate);
   endDate.setDate(endDate.getDate() + durationMap[penalty.duration]);
   return endDate;
+};
+
+// Função para recuperar o user do localStorage
+export const getUserFromLocalStorage = (): UserLocalStorage | null => {
+  const userString = localStorage.getItem("user");
+  if (userString) {
+    try {
+      const user = JSON.parse(userString) as UserLocalStorage; // Faz o parse e tipa como User
+      return user;
+    } catch (error) {
+      console.error("Erro ao fazer parse do user:", error);
+      return null;
+    }
+  }
+  return null;
+};
+
+export const useLogout = () => {
+  const navigate = useNavigate();
+
+  const logout = () => {
+    // 1. Limpa os dados de autenticação
+    localStorage.removeItem("token"); // Remove o token do localStorage
+    sessionStorage.removeItem("token"); // Remove o token do sessionStorage (se aplicável)
+
+    // 2. Redireciona para a rota de login
+    navigate("/", { replace: true }); // O `replace: true` impede que a página anterior fique no histórico
+
+    // 3. Recarrega a página para garantir que o estado da aplicação seja resetado
+    window.location.reload();
+  };
+
+  return logout;
 };
