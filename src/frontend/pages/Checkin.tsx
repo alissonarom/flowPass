@@ -1,7 +1,7 @@
 /* eslint-disable */
 /* prettier-ignore */
 
-import React, { useState } from "react";
+import React, { forwardRef, useEffect, useState } from "react";
 import {
   AppBar,
   Toolbar,
@@ -15,6 +15,9 @@ import {
   IconButton,
   Menu,
   MenuItem,
+  Dialog,
+  Slide,
+  SlideProps,
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import {
@@ -27,13 +30,21 @@ import QrCodeReader from "../components";
 import QrCodeIcon from "@mui/icons-material/QrCode";
 import MenuIcon from "@mui/icons-material/Menu";
 import useMediaQuery from "@mui/material/useMediaQuery";
-import { AccountCircle } from "@mui/icons-material";
+import {
+  AccountCircle,
+  Close as CloseIcon,
+  CropFree,
+} from "@mui/icons-material";
+import { fetchQRCode } from "../services";
 
 const Checkin: React.FC = () => {
-  const [cpf, setCpf] = useState("");
+  const [cpf, setCpf] = useState<string>("");
+  const [QRcodeCpf, setQRcodeCpf] = useState<string>("");
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const [qrCodeLink, setQrCodeLink] = useState<string>(""); // State for QR code link
+  const [qrCodeLinkImage, setQrCodeLinkImage] = useState<string>(""); // State for QR code link
   const user = getUserFromLocalStorage();
   const settings = ["Perfil", "Logout"];
   const [anchorElUser, setAnchorElUser] = React.useState<null | HTMLElement>(
@@ -41,20 +52,22 @@ const Checkin: React.FC = () => {
   );
   const [showScanner, setShowScanner] = useState(false);
   const isDesktop = useMediaQuery("(min-width: 768px)");
-
-  const isUserId = user?.client_id === "amorChurch";
-
-  const handleCheck = () => {
-    const isValid = validateCPF(cpf);
-    setError(!isValid);
-    if (isValid) {
-      navigate(`/profile?cpf=${cpf}`);
-    }
-  };
+  const isAmorChurch = user?.client_id === "amorChurch";
 
   const handleLista = () => {
     navigate("/CriarLista");
   };
+
+  const Transition = forwardRef<HTMLDivElement, SlideProps>(function Transition(
+    props: SlideProps,
+    ref: React.Ref<HTMLDivElement>
+  ) {
+    return (
+      <Slide direction="up" ref={ref} {...props}>
+        {props.children}
+      </Slide>
+    );
+  });
 
   const editaCpf = (e: React.ChangeEvent<HTMLInputElement>) => {
     setCpf(handleCpfChange(e.target.value));
@@ -69,6 +82,31 @@ const Checkin: React.FC = () => {
   };
 
   const logout = useLogout();
+
+  const generateQRcode = async () => {
+    const isValid = validateCPF(cpf);
+    setError(!isValid);
+    if (!isValid) return;
+    try {
+      const response = await fetchQRCode(cpf);
+      setQRcodeCpf(response?.qrCode); // Data URL da imagem do QR code
+      setQrCodeLinkImage(response?.qrCodeLink); // Link armazenado no MongoDB
+    } catch (error) {
+      console.error("Erro ao buscar QR code:", error);
+    }
+  };
+
+  const handleCheck = () => {
+    const isValid = validateCPF(cpf);
+    setError(!isValid);
+    if (isValid) {
+      navigate(`/profile?cpf=${cpf}`);
+    }
+  };
+
+  useEffect(() => {
+    if (qrCodeLink) navigate(`/profile?cpf=${qrCodeLink}`);
+  }, [qrCodeLink]);
 
   return (
     <>
@@ -172,9 +210,10 @@ const Checkin: React.FC = () => {
             <Typography
               gutterBottom
               textAlign={{ xs: "center", md: "center" }}
-              fontSize={isDesktop ? "2.5rem" : "1.5rem"}
+              fontSize={{ xs: "1.5rem", sm: "2.5rem", md: "2.5rem" }}
+              marginTop={{ xs: "50px" }}
             >
-              {isUserId
+              {isAmorChurch
                 ? "Entre com as credenciais para confirmar presença"
                 : "Digite o CPF para fazer o check-in"}
             </Typography>
@@ -244,43 +283,150 @@ const Checkin: React.FC = () => {
                     }}
                     onClick={handleLista}
                   >
-                    {isUserId ? "Gerenciar aulas" : "Gerenciar listas"}
+                    {isAmorChurch ? "Gerenciar aulas" : "Gerenciar listas"}
                   </Button>
                 </Grid>
-                {!isDesktop && isUserId && (
-                  <Grid width={"100%"}>
+                {/* GeraR QR Code */}
+                {/* <Grid width={"100%"}>
+                  <Button
+                    variant="contained"
+                    sx={{
+                      backgroundColor: "#26d07c",
+                      marginTop: "20px",
+                      "&:hover": { backgroundColor: "#1fa968" },
+                      width: "100%", // Botão com largura total
+                      alignSelf: "flex-start",
+                    }}
+                    onClick={() => generateQRcode()}
+                    startIcon={<CropFree />}
+                  >
+                    Gerar QR Code
+                  </Button>
+                </Grid> */}
+                {!isDesktop && isAmorChurch && (
+                  <>
                     <Button
                       variant="contained"
                       sx={{
                         backgroundColor: "#26d07c",
                         marginTop: "20px",
                         "&:hover": { backgroundColor: "#1fa968" },
-                        width: "100%", // Botão com largura total
-                        alignSelf: "flex-start",
+                        width: "100%",
                       }}
                       onClick={() => setShowScanner(true)}
                       startIcon={<QrCodeIcon />}
                     >
                       Ler QR Code
                     </Button>
-                  </Grid>
+
+                    <Dialog
+                      fullScreen
+                      open={showScanner}
+                      onClose={() => setShowScanner(false)}
+                      TransitionComponent={Transition}
+                      PaperProps={{
+                        style: {
+                          backgroundColor: "black",
+                        },
+                      }}
+                    >
+                      <AppBar sx={{ position: "relative" }}>
+                        <Toolbar>
+                          <IconButton
+                            edge="start"
+                            color="inherit"
+                            onClick={() => setShowScanner(false)}
+                            aria-label="close"
+                          >
+                            <CloseIcon />
+                          </IconButton>
+                          <Typography
+                            sx={{ ml: 2, flex: 1 }}
+                            variant="h6"
+                            component="div"
+                          >
+                            Leitor de QR Code
+                          </Typography>
+                        </Toolbar>
+                      </AppBar>
+
+                      <Box
+                        sx={{
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          height: "calc(100% - 64px)",
+                          padding: 2,
+                        }}
+                      >
+                        {showScanner && (
+                          <QrCodeReader
+                            onScan={(result) => {
+                              setQrCodeLink(result);
+                              setShowScanner(false);
+                            }}
+                          />
+                        )}
+                        <Typography
+                          variant="body1"
+                          color="white"
+                          sx={{ mt: 2 }}
+                        >
+                          Posicione o QR Code dentro da área delimitada
+                        </Typography>
+                      </Box>
+                    </Dialog>
+                  </>
                 )}
               </Grid>
-              {showScanner && (
-                <div>
-                  <QrCodeReader />
-                  <Button
-                    variant="outlined"
-                    sx={{ marginTop: "10px", width: "100%" }}
-                    onClick={() => setShowScanner(false)} // Fecha o leitor
-                  >
-                    Cancelar
-                  </Button>
-                </div>
-              )}
+            </Box>
+            <Box>
+              {QRcodeCpf && <img src={QRcodeCpf} alt="QR Code" />}
+              {qrCodeLinkImage && <p>Link: {qrCodeLinkImage}</p>}
             </Box>
           </Grid>
         </Grid>
+        {/* <Modal open={isModalOpen} onClose={handleCloseModal}>
+          <Box
+            sx={{
+              position: "absolute",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              width: 400,
+              bgcolor: "background.paper",
+              boxShadow: 24,
+              p: 4,
+              borderRadius: "8px",
+            }}
+          >
+            <Button
+              onClick={() => {}}
+              variant="contained"
+              sx={{
+                backgroundColor: "#26d07c",
+                "&:hover": {
+                  backgroundColor: "#1fa968",
+                },
+              }}
+            >
+              Confirmar presença
+            </Button>
+            <Button
+              onClick={goProfile}
+              variant="contained"
+              sx={{
+                backgroundColor: "#26d07c",
+                "&:hover": {
+                  backgroundColor: "#1fa968",
+                },
+              }}
+            >
+              Ir para perfil
+            </Button>
+          </Box>
+        </Modal> */}
       </Container>
     </>
   );

@@ -1,5 +1,5 @@
 import axios from "axios";
-import { IPromoter, IUser } from "../types";
+import { IEvent, ILot, IPromoter, IUser, List } from "../types";
 
 const API_URL = process.env.REACT_APP_API_FP_BE;
 
@@ -17,7 +17,7 @@ interface LoginResponse {
   user: User;
 }
 
-// USERS -----------
+// USERS -------------------------------------------------------------------------
 // Buscar todos os usuários
 export const getUsers = async () => {
   const response = await axios.get(`${API_URL}/users`);
@@ -40,6 +40,25 @@ export const getUserProfileByCpf = async (cpf: string) => {
   } catch (error) {
     console.error("Erro ao buscar perfil do usuário:", error);
     throw error; // Lança o erro para ser tratado no componente
+  }
+};
+
+export const getUserById = async (userId: string) => {
+  try {
+    const token = localStorage.getItem("token"); // Recupera o token do localStorage
+    if (!token) {
+      throw new Error("Token de autenticação para o ID não encontrado");
+    }
+    const response = await axios.get(`${API_URL}/usersById/${userId}`, {
+      headers: {
+        Authorization: `Bearer ${token}`, // Adiciona o token no cabeçalho
+      },
+    });
+
+    return response.data;
+  } catch (error) {
+    console.error("Erro ao buscar usuário:", error);
+    return null;
   }
 };
 
@@ -93,7 +112,7 @@ export const checkUserByCpf = async (cpf: string) => {
   }
 };
 
-// LISTAS -----------
+// LISTAS ---------------------------------------------------------------
 // Buscar todas as listas
 export const getLists = async () => {
   try {
@@ -108,11 +127,14 @@ export const getLists = async () => {
 // Criar listas
 export const createList = async (listData: {
   title: string;
-  promotor: string;
+  owner: string;
   startDate: Date;
   endDate: Date;
   users: string[];
-}) => {
+  domain: string;
+  isExam: boolean;
+  eventId: string;
+}): Promise<List> => {
   try {
     const response = await axios.post(`${API_URL}/lists`, listData);
     return response.data;
@@ -142,7 +164,7 @@ export const updateList = async (
   }
 };
 
-// PROMOTOR -----------
+// PROMOTOR ---------------------------------------------------------------
 // Buscar todos os promotores
 export const getPromoters = async (): Promise<IPromoter[]> => {
   try {
@@ -218,6 +240,78 @@ export const removeUserFromList = async (listId: string, userId: string) => {
     return response.data;
   } catch (error) {
     console.error("Erro ao remover o usuário da lista:", error);
+    throw error;
+  }
+};
+
+export const fetchQRCode = async (cpf: string) => {
+  try {
+    const response = await axios.get(`${API_URL}/generate-qrcode/${cpf}`);
+    return response.data;
+  } catch (error) {
+    console.error("Erro ao buscar QR code:", error);
+    throw error;
+  }
+};
+
+export const updatePromotorCash = async (promotor: IUser, amount: number) => {
+  try {
+    // Converte o valor atual de `cash` para número
+    const currentCash = promotor.cash || 0;
+
+    // Calcula o novo valor de `cash`
+    const newCash = currentCash + amount;
+
+    // Cria um novo objeto com o campo `cash` atualizado
+    const updatedPromotor: IUser = {
+      ...promotor, // Mantém todos os outros campos do promotor
+      cash: newCash, // Atualiza o campo `cash` como número
+    };
+
+    // Atualiza o promotor com o novo valor de `cash`
+    await createOrUpdateUser(updatedPromotor);
+  } catch (error) {
+    console.error("Erro ao atualizar o campo cash do promotor:", error);
+    throw error;
+  }
+};
+// EVENTO ----------------------------------------------------------------------
+
+// Criar Eventos
+export const createEvent = async (eventData: {
+  title: string;
+  owner: string;
+  startDate: Date | null;
+  endDate: Date | null;
+  lists: string[];
+  domain: string;
+  lot: ILot[];
+}) => {
+  try {
+    const response = await axios.post(`${API_URL}/events`, eventData);
+    return response.data;
+  } catch (error) {
+    console.error("Erro ao criar evento:", error);
+    throw error;
+  }
+};
+
+export const getEvents = async () => {
+  try {
+    const response = await axios.get(`${API_URL}/events`);
+    return response.data;
+  } catch (error) {
+    console.error("Erro ao buscar eventos:", error);
+    throw error;
+  }
+};
+
+export const updateEvent = async (id: string, eventData: IEvent) => {
+  try {
+    const response = await axios.put(`${API_URL}/events/${id}`, eventData);
+    return response.data;
+  } catch (error) {
+    console.error("Erro ao atualizar o evento:", error);
     throw error;
   }
 };

@@ -1,105 +1,70 @@
-// import React, { useState } from "react";
-// import { IDetectedBarcode, Scanner } from '@yudiel/react-qr-scanner';
+import React, { useEffect, useRef } from "react";
+import { Html5Qrcode, Html5QrcodeScanType } from "html5-qrcode";
 
-// // Definindo as props do componente
-// interface QrCodeReaderProps {
-//   onScan: (data: string) => void; // Função chamada quando um QR code é lido
-// }
+interface QrCodeReaderProps {
+  onScan: (decodedText: string) => void;
+}
 
-// const QrCodeReader: React.FC<QrCodeReaderProps> = ({ onScan }) => {
-//   // Estado para armazenar mensagens de erro
-//   const [error, setError] = useState<string | null>(null);
+const QrCodeReader: React.FC<QrCodeReaderProps> = ({ onScan }) => {
+  const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
+  const scannerContainerRef = useRef<HTMLDivElement>(null);
 
-//   // Função chamada quando um QR code é lido com sucesso
-//   const handleScan = (detectedCodes: IDetectedBarcode[]) => {
-//     if (detectedCodes && detectedCodes.length > 0) {
-//       const data = detectedCodes[0].rawValue; // Extrai o valor do primeiro código detectado
-//       if (data) {
-//         onScan(data); // Chama a função onScan passada via props
-//       }
-//     }
-//   };
-
-//   // Função chamada em caso de erro na leitura do QR code
-//   const handleError = (err: any) => {
-//     setError(err.message || "Erro ao ler o QR code"); // Define a mensagem de erro
-//   };
-
-//   return (
-//     <div>
-//       {/* Exibe mensagens de erro, se houver */}
-//       {error && <p>Erro ao ler o QR code: {error}</p>}
-
-//       {/* Componente de leitura de QR code */}
-//       <Scanner
-//         onError={handleError} // Função chamada em caso de erro
-//         onScan={handleScan} // Função chamada quando um QR code é lido
-//       />
-//     </div>
-//   );
-// };
-
-// export default QrCodeReader;
-
-import { Html5QrcodeScanner } from "html5-qrcode";
-import React, { useEffect } from "react";
-
-const QrCodeReader: React.FC = () => {
   useEffect(() => {
-    const qrCodeReaderElement = document.getElementById("qr-code-reader");
+    const container = scannerContainerRef.current;
+    if (!container) return;
 
-    if (qrCodeReaderElement && qrCodeReaderElement.requestFullscreen) {
-      qrCodeReaderElement.requestFullscreen().catch((err) => {
-        console.error("Erro ao tentar entrar em tela cheia:", err);
-      });
-    }
+    const html5QrCode = new Html5Qrcode(container.id);
+    html5QrCodeRef.current = html5QrCode;
 
-    const scanner = new Html5QrcodeScanner(
-      "qr-code-reader", // ID do elemento HTML onde o leitor será renderizado
-      {
-        qrbox: {
-          width: 250,
-          height: 250,
-        },
-        fps: 5,
-      },
-      false // Verbose (opcional)
-    );
+    const qrCodeSuccessCallback = (decodedText: string) => {
+      console.log("QR code lido:", decodedText);
+      onScan(decodedText);
+    };
 
-    scanner.render(
-      (data) => {
-        console.log("QR code lido:", data);
-        scanner.clear(); // Para o scanner após a leitura
-        if (document.fullscreenElement) {
-          document.exitFullscreen();
+    const config = {
+      fps: 10,
+      qrbox: { width: 250, height: 250 },
+      supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
+    };
+
+    html5QrCode
+      .start(
+        { facingMode: "environment" },
+        config,
+        qrCodeSuccessCallback,
+        (errorMessage) => {
+          // Ignora mensagens de erro específicas
+          if (
+            !errorMessage.includes("No MultiFormat Readers were able to detect")
+          ) {
+            console.error("Erro ao ler QR code:", errorMessage);
+          }
         }
-      },
-      (error) => {
-        console.error("Erro ao ler o QR code:", error);
-      }
-    );
+      )
+      .catch((err) => {
+        console.error("Erro ao iniciar scanner:", err);
+      });
 
     return () => {
-      scanner.clear(); // Limpa o scanner ao desmontar o componente
-
-      if (document.fullscreenElement) {
-        document.exitFullscreen();
+      if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
+        html5QrCodeRef.current
+          .stop()
+          .then(() => {
+            console.log("Scanner parado com sucesso");
+          })
+          .catch((err) => {
+            console.error("Erro ao parar scanner:", err);
+          });
       }
     };
-  }, []);
+  }, [onScan]);
 
   return (
     <div
-      id="qr-code-reader"
-      style={{
-        width: "100vw", // Ocupa 100% da largura da viewport
-        height: "100vh", // Ocupa 100% da altura da viewport
-        position: "fixed", // Fixa o elemento na tela
-        top: 0,
-        left: 0,
-        backgroundColor: "black", // Fundo preto para melhorar a visibilidade
-      }}
-    ></div>
+      id="qr-reader-container"
+      ref={scannerContainerRef}
+      style={{ width: "100%", height: "100%" }}
+    />
   );
 };
 

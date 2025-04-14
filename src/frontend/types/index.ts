@@ -14,6 +14,15 @@ export interface IListHistory {
   name: string; // No frontend, podemos usar string em vez de ObjectId
   joinedAt: Date;
   leftAt?: Date;
+  firstRound?: boolean;
+  secondRound?: boolean;
+  isExam?: boolean;
+  examScore?: number;
+  ticket: {
+    free: Boolean;
+    reason: string;
+    approver: string;
+  };
 }
 
 export enum PenaltyDuration {
@@ -36,7 +45,7 @@ export interface IUser {
   name: string;
   cpf: string;
   birthDate: Date | null;
-  phone: string;
+  phone?: string;
   gender: string;
   profile: string;
   anniversary: boolean;
@@ -49,12 +58,22 @@ export interface IUser {
 }
 
 export interface List {
-  _id: string;
+  _id?: string;
   title: string;
-  promotor: IUser;
+  owner: IUser;
   users: IUser[];
   startDate: Date;
   endDate: Date;
+  domain: string;
+  isExam: boolean;
+  eventId: string;
+}
+
+export interface ILot {
+  title: string;
+  sold_out: boolean;
+  quantity: number;
+  value: number;
 }
 
 export interface IPromoter {
@@ -73,4 +92,21 @@ export interface UserLocalStorage {
   cpf: string;
   profile: string;
   client_id: string;
+}
+
+export interface IEvent {
+  _id?: string;
+  title: string;
+  owner: string;
+  startDate: Date | null;
+  endDate: Date | null;
+  lists: List[];
+  domain: string;
+  lot: ILot[];
+}
+
+export interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number;
 }

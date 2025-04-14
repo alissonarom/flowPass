@@ -27,6 +27,10 @@ import {
   useMediaQuery,
   Tooltip,
   Menu,
+  Checkbox,
+  FormGroup,
+  FormControlLabel,
+  Paper,
 } from "@mui/material";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Chip from "@mui/material/Chip";
@@ -41,6 +45,7 @@ import {
   getLists,
   getUserProfileByCpf,
   updateList,
+  updatePromotorCash,
 } from "../services/index";
 import { IPenalty, IUser, PenaltyDuration, List, IListHistory } from "../types";
 import { DatePicker } from "@mui/x-date-pickers";
@@ -53,7 +58,13 @@ import {
   getUserFromLocalStorage,
   useLogout,
 } from "../utils";
-import { AccountCircle, GppMaybe } from "@mui/icons-material";
+import {
+  AccountCircle,
+  CalendarMonth,
+  GppMaybe,
+  Bookmark,
+} from "@mui/icons-material";
+import BookmarkBorderIcon from "@mui/icons-material/BookmarkBorder";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 
 const modalStyle = {
@@ -61,7 +72,7 @@ const modalStyle = {
   top: "50%",
   left: "50%",
   transform: "translate(-50%, -50%)",
-  width: 300,
+  width: "50%",
   bgcolor: "background.paper",
   boxShadow: 24,
   p: 4,
@@ -107,6 +118,9 @@ const Profile: React.FC = () => {
   const settings = ["Perfil", "Logout"];
   const [activePenalties, setActivePenalties] = useState<boolean>(false);
   const navigate = useNavigate();
+  const [isFree, setisFree] = useState<boolean>(false);
+  const [motivo, setMotivo] = useState<string>("");
+  const [isModalOpenTicket, setIsModalOpenTicket] = useState(false);
 
   const isPenaltyActive = (penalty: IPenalty): boolean => {
     const today = new Date();
@@ -163,6 +177,7 @@ const Profile: React.FC = () => {
 
   const handleCloseModal = () => {
     setOpenModal(false);
+    setIsModalOpenTicket(false);
   };
 
   const handleSelectList = async (id: string) => {
@@ -195,14 +210,40 @@ const Profile: React.FC = () => {
                 name: lista.find((list) => list._id === id)?.title || "", // Nome da lista
                 joinedAt: new Date(), // Data de entrada
                 leftAt: lista.find((list) => list._id === id)?.endDate, // Data de saída
+                ticket: {
+                  free: isFree,
+                  reason: motivo,
+                  approver: user?.id || "",
+                },
               },
             ],
       }));
 
+      await updateList(id, {
+        users:
+          lista
+            .find((list) => list._id === id)
+            ?.users?.filter((user) => user._id !== profileData._id)
+            .map((user) => user._id)
+            .filter((id): id is string => id !== undefined) || [], // Ensures only string[] (IDs)
+      });
+
+      // 3. Atualiza o usuário no backend (para limpar currentLists)
+      await createOrUpdateUser({
+        ...profileData,
+        currentLists: [id], // Garante que o backend também reflita a remoção
+      });
+
+      let promotor = lista.find((list) => list._id === id)?.owner;
+
+      if (promotor && !isFree) {
+        await updatePromotorCash(promotor, 5);
+      } else {
+        console.error("Promotor not found for the selected list.");
+      }
+
       // Fecha o modal
       handleCloseModal();
-
-      console.log("Usuário adicionado à lista (localmente).");
     } catch (error) {
       console.error("Erro ao adicionar usuário à lista:", error);
     }
@@ -212,42 +253,43 @@ const Profile: React.FC = () => {
     try {
       // Verifica se o usuário está em uma lista ativa
       if (!isUserInActiveList(profileData, lista)) {
-        console.log("O usuário não está em uma lista ativa.");
         return;
       }
 
       // Obtém o ID da lista atual
       const currentListId = profileData.currentLists[0]; // Assumindo que o usuário está em apenas uma lista
 
-      // Atualiza o estado local
-      setProfileData((prevProfileData) => {
-        const updatedHistory = prevProfileData.history.map((entry) => {
-          if (entry.listId === currentListId) {
-            return {
-              ...entry,
-              leftAt: new Date(), // Registra a data de saída
-            };
-          }
-          return entry;
-        });
-
-        return {
-          ...prevProfileData,
-          currentLists: [], // Limpa a lista atual
-          history: updatedHistory, // Atualiza o histórico
-        };
+      // 2. Remove o usuário da lista no backend
+      await updateList(currentListId, {
+        users:
+          lista
+            .find((list) => list._id === currentListId)
+            ?.users?.filter((user) => user._id !== profileData._id)
+            .map((user) => user._id)
+            .filter((id): id is string => id !== undefined) || [], // Ensures only string[] (IDs)
       });
 
-      setSnackbarMessage("Removido da lista (localmente)!");
+      // 3. Atualiza o usuário no backend (para limpar currentLists)
+      await createOrUpdateUser({
+        ...profileData,
+        currentLists: [], // Garante que o backend também reflita a remoção
+      });
+
+      // Feedback visual
+      setSnackbarMessage("Usuário removido da lista com sucesso!");
       setSnackbarSeverity("success");
       setSnackbarOpen(true);
     } catch (error) {
       console.error("Erro ao remover o usuário da lista:", error);
+      setSnackbarMessage(
+        "Erro ao remover o usuário da lista. Tente novamente."
+      );
+      setSnackbarSeverity("error");
+      setSnackbarOpen(true);
     }
   };
 
   const handleSaveUser = async () => {
-    console.log("Salvando usuário:", profileData);
     try {
       // 1. Atualiza o usuário no backend
       const user = await createOrUpdateUser(profileData);
@@ -354,17 +396,50 @@ const Profile: React.FC = () => {
   }, [profileData]);
 
   useEffect(() => {
-    const fetchLists = async () => {
-      try {
-        const data = await getLists();
-        setLista(data);
-      } catch (error) {
-        console.error("Erro ao carregar listas:", error);
-      }
-    };
-
     fetchLists();
   }, []);
+
+  const fetchLists = async () => {
+    try {
+      const data = await getLists();
+
+      // Filtra as listas
+      const filteredLists = data.filter((list: List) => {
+        const startDate = new Date(list.startDate);
+        const today = new Date();
+
+        // Remove o horário das datas para comparar apenas o dia
+        const startDateWithoutTime = new Date(
+          startDate.getFullYear(),
+          startDate.getMonth(),
+          startDate.getDate()
+        );
+        const todayWithoutTime = new Date(
+          today.getFullYear(),
+          today.getMonth(),
+          today.getDate()
+        );
+
+        // Verifica se o domain é igual ao client_id do usuário
+        if (list.domain === user?.client_id) {
+          // Se o domain for "amorChurch", filtra também por startDate igual a today
+          if (list.domain === "amorChurch") {
+            return (
+              startDateWithoutTime.getTime() === todayWithoutTime.getTime()
+            );
+          }
+          // Caso contrário, retorna true (filtra apenas por domain)
+          return true;
+        }
+        // Se o domain não for igual ao client_id do usuário, retorna false
+        return false;
+      });
+
+      setLista(filteredLists); // Atualiza o estado com as listas filtradas
+    } catch (error) {
+      console.error("Erro ao carregar listas:", error);
+    }
+  };
 
   useEffect(() => {
     const active = profileData.penalties.filter((penalty) =>
@@ -372,6 +447,16 @@ const Profile: React.FC = () => {
     );
     setActivePenalties(active.length > 0);
   }, [profileData.penalties]);
+
+  const updateHistoryEntry = (
+    index: number,
+    field: string,
+    value: boolean | number
+  ) => {
+    const updatedHistory = [...profileData.history]; // Cria uma cópia do histórico
+    updatedHistory[index] = { ...updatedHistory[index], [field]: value }; // Atualiza o campo específico
+    setProfileData({ ...profileData, history: updatedHistory }); // Atualiza o estado
+  };
 
   return (
     <div style={{ backgroundColor: "#EDEDED", minHeight: "100vh" }}>
@@ -484,11 +569,11 @@ const Profile: React.FC = () => {
                 }}
               >
                 {/* Chip dinâmico */}
-                {activePenalties ? (
+                {isAmorChurch ? (
                   <Chip
-                    icon={<GppMaybe />}
-                    label={"Usuário com suspensão ativa"}
-                    color={"error"}
+                    icon={<CalendarMonth />}
+                    label={lista.length ? lista[0]?.title : "Sem aula hoje"}
+                    color={"success"}
                     variant="filled"
                     sx={{
                       width: "100%",
@@ -501,33 +586,53 @@ const Profile: React.FC = () => {
                     size="medium"
                   />
                 ) : (
-                  <Chip
-                    label={
-                      profileData.profile == "Promotor"
-                        ? `Promotor: ${profileData.name}`
-                        : !isUserInActiveList(profileData, lista)
-                          ? "Adicione o usuário numa lista"
-                          : `LISTA: ${lista.find((list) => list._id === profileData.currentLists[0])?.title}`
-                    }
-                    color={
-                      profileData.profile == "Promotor" ||
-                      isUserInActiveList(profileData, lista)
-                        ? "primary"
-                        : "warning"
-                    }
-                    sx={{
-                      width: "100%",
-                      justifyContent: "flex-start",
-                      minWidth: "250px",
-                      color: "white",
-                    }}
-                    size="medium"
-                  />
+                  <>
+                    {activePenalties ? (
+                      <Chip
+                        icon={<GppMaybe />}
+                        label={"Usuário com suspensão ativa"}
+                        color={"error"}
+                        variant="filled"
+                        sx={{
+                          width: "100%",
+                          "&.MuiChip-iconColor": {
+                            color: "red",
+                          },
+                          justifyContent: "flex-start",
+                          color: "white",
+                        }}
+                        size="medium"
+                      />
+                    ) : (
+                      <Chip
+                        label={
+                          profileData.profile == "Promotor"
+                            ? `Promotor: ${profileData.name}`
+                            : !isUserInActiveList(profileData, lista)
+                              ? "Adicione o usuário numa lista"
+                              : `LISTA: ${lista.find((list) => list._id === profileData.currentLists[0])?.title}`
+                        }
+                        color={
+                          profileData.profile == "Promotor" ||
+                          isUserInActiveList(profileData, lista)
+                            ? "primary"
+                            : "warning"
+                        }
+                        sx={{
+                          width: "100%",
+                          justifyContent: "flex-start",
+                          minWidth: "250px",
+                          color: "white",
+                        }}
+                        size="medium"
+                      />
+                    )}
+                  </>
                 )}
 
-                {/* Botão de adicionar (aparece apenas se a lista estiver vazia) */}
-
-                {!activePenalties && profileData.profile !== "Promotor" ? (
+                {!activePenalties &&
+                profileData.profile !== "Promotor" &&
+                !isAmorChurch ? (
                   !isUserInActiveList(profileData, lista) ? (
                     <IconButton
                       onClick={handleOpenModal}
@@ -540,34 +645,19 @@ const Profile: React.FC = () => {
                       <AddIcon />
                     </IconButton>
                   ) : (
-                    <>
-                      <IconButton
-                        onClick={handleOpenModal}
-                        sx={{
-                          gap: "10px",
-                          color: "white",
-                          backgroundColor: "#26d07c",
-                          "&:hover": {
-                            backgroundColor: "#1fa968",
-                          },
-                        }}
-                      >
-                        <EditIcon />
-                      </IconButton>
-                      <IconButton
-                        onClick={handleRemoveFromList} // Chama a função para remover da lista
-                        sx={{
-                          gap: "10px",
-                          color: "white",
-                          backgroundColor: "#26d07c",
-                          "&:hover": {
-                            backgroundColor: "#1fa968",
-                          },
-                        }}
-                      >
-                        <DeleteIcon />
-                      </IconButton>
-                    </>
+                    <IconButton
+                      onClick={handleRemoveFromList} // Chama a função para remover da lista
+                      sx={{
+                        gap: "10px",
+                        color: "white",
+                        backgroundColor: "#26d07c",
+                        "&:hover": {
+                          backgroundColor: "#1fa968",
+                        },
+                      }}
+                    >
+                      <DeleteIcon />
+                    </IconButton>
                   )
                 ) : null}
                 {profileData.profile == "Promotor" && (
@@ -628,7 +718,9 @@ const Profile: React.FC = () => {
                             <ListItem
                               component="li"
                               key={index}
-                              onClick={() => handleSelectList(listas._id)}
+                              onClick={() =>
+                                listas._id && handleSelectList(listas._id)
+                              }
                               sx={{
                                 cursor: "pointer", // Cursor pointer para indicar que é clicável
                                 "&:hover": {
@@ -636,7 +728,28 @@ const Profile: React.FC = () => {
                                 },
                               }}
                             >
-                              <ListItemText primary={listas.title} />
+                              <ListItemText
+                                primary={listas.title}
+                                secondary={listas.owner.name}
+                              />
+                              <FormControlLabel
+                                control={
+                                  <Checkbox
+                                    checked={isFree}
+                                    onChange={(event) => {
+                                      if (!isFree) {
+                                        setIsModalOpenTicket(true); // Se estava false, abre o modal
+                                      } else {
+                                        setisFree(false); // Se estava true, apenas desmarca
+                                      }
+                                    }}
+                                    sx={{
+                                      "& .MuiSvgIcon-root": { fontSize: 30 },
+                                    }}
+                                  />
+                                }
+                                label="Free"
+                              />
                             </ListItem>
                           ))}
                       </MuiList>
@@ -678,7 +791,7 @@ const Profile: React.FC = () => {
                     Dados Pessoais
                   </Typography>
                   <Grid container spacing={2}>
-                    <Grid item xs={6}>
+                    <Grid item xs={12} md={6}>
                       <TextField
                         label="Nome"
                         value={profileData.name}
@@ -691,7 +804,7 @@ const Profile: React.FC = () => {
                         margin="normal"
                       />
                     </Grid>
-                    <Grid item xs={6}>
+                    <Grid item xs={12} md={6}>
                       <TextField
                         label="CPF"
                         value={profileData.cpf}
@@ -703,7 +816,7 @@ const Profile: React.FC = () => {
                         margin="normal"
                       />
                     </Grid>
-                    <Grid item xs={6}>
+                    <Grid item xs={12} md={6}>
                       <DatePicker
                         sx={{ minWidth: "100%", marginTop: "16px" }}
                         label="Data de Nascimento"
@@ -717,10 +830,10 @@ const Profile: React.FC = () => {
                         }
                       />
                     </Grid>
-                    <Grid item xs={6}>
+                    <Grid item xs={12} md={6}>
                       <TextField
                         label="Celular"
-                        value={formatPhoneNumber(profileData.phone)}
+                        value={formatPhoneNumber(profileData.phone || "")}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                           handleChange(
                             "phone",
@@ -732,7 +845,7 @@ const Profile: React.FC = () => {
                         margin="normal"
                       />
                     </Grid>
-                    <Grid item xs={6}>
+                    <Grid item xs={12} md={6}>
                       <TextField
                         select
                         label="Gênero"
@@ -752,7 +865,7 @@ const Profile: React.FC = () => {
                       </TextField>
                     </Grid>
                     {isAmorChurch ? (
-                      <Grid item xs={6}>
+                      <Grid item xs={12} md={6}>
                         <TextField
                           select
                           label="Perfil"
@@ -774,7 +887,7 @@ const Profile: React.FC = () => {
                         </TextField>
                       </Grid>
                     ) : (
-                      <Grid item xs={6}>
+                      <Grid item xs={12} md={6}>
                         <TextField
                           select
                           label="Perfil"
@@ -813,20 +926,120 @@ const Profile: React.FC = () => {
                   }}
                 >
                   <Typography variant="h6" gutterBottom>
-                    Histórico de Entradas
+                    Histórico de {isAmorChurch ? "Presença" : "Entradas"}
                   </Typography>
                   <MuiList>
                     {profileData.history.length ? (
                       profileData.history.map(
                         (entry: IListHistory, index: number) => (
-                          <ListItem key={index}>
-                            <ListItemText
-                              primary={entry.name}
-                              secondary={new Date(
-                                entry.joinedAt
-                              ).toLocaleDateString()}
-                            />
-                          </ListItem>
+                          <Grid
+                            container
+                            spacing={2}
+                            key={index}
+                            sx={{ mb: 2 }}
+                          >
+                            {/* Bloco 1: Título e Data */}
+                            <Grid
+                              item
+                              xs={12}
+                              sm={6}
+                              md={4}
+                              sx={{ height: "100%" }}
+                            >
+                              <Typography variant="h6" component="div">
+                                {entry.name}
+                              </Typography>
+                              <Typography
+                                variant="body2"
+                                color="text.secondary"
+                              >
+                                {new Date(entry.joinedAt).toLocaleDateString()}
+                              </Typography>
+                            </Grid>
+
+                            {/* Bloco 2: Checkboxes de Turnos (só aparece se isAmorChurch for true) */}
+                            {isAmorChurch && (
+                              <Grid
+                                item
+                                xs={12}
+                                sm={6}
+                                md={4}
+                                sx={{ height: "100%" }}
+                              >
+                                <FormGroup>
+                                  <FormControlLabel
+                                    control={
+                                      <Checkbox
+                                        icon={<BookmarkBorderIcon />}
+                                        checkedIcon={<Bookmark />}
+                                        checked={entry.firstRound || false}
+                                        onChange={(
+                                          event: React.ChangeEvent<HTMLInputElement>
+                                        ) => {
+                                          updateHistoryEntry(
+                                            index,
+                                            "firstRound",
+                                            event.target.checked
+                                          );
+                                        }}
+                                      />
+                                    }
+                                    label="1º Turno"
+                                  />
+                                  <FormControlLabel
+                                    control={
+                                      <Checkbox
+                                        icon={<BookmarkBorderIcon />}
+                                        checkedIcon={<Bookmark />}
+                                        checked={entry.secondRound || false}
+                                        onChange={(
+                                          event: React.ChangeEvent<HTMLInputElement>
+                                        ) => {
+                                          updateHistoryEntry(
+                                            index,
+                                            "secondRound",
+                                            event.target.checked
+                                          );
+                                        }}
+                                      />
+                                    }
+                                    label="2º Turno"
+                                  />
+                                </FormGroup>
+                              </Grid>
+                            )}
+
+                            {/* Bloco 3: Campo de Nota (só aparece se for exame) */}
+                            {isAmorChurch && entry.isExam && (
+                              <Grid
+                                item
+                                xs={12}
+                                sm={6}
+                                md={4}
+                                sx={{ height: "100%" }}
+                              >
+                                <TextField
+                                  fullWidth
+                                  id="outlined-number"
+                                  label="Nota da Prova"
+                                  type="number"
+                                  InputLabelProps={{
+                                    shrink: true,
+                                  }}
+                                  value={entry.examScore || ""}
+                                  onChange={(
+                                    event: React.ChangeEvent<HTMLInputElement>
+                                  ) => {
+                                    updateHistoryEntry(
+                                      index,
+                                      "examScore",
+                                      parseFloat(event.target.value)
+                                    );
+                                  }}
+                                />
+                              </Grid>
+                            )}
+                          </Grid>
                         )
                       )
                     ) : (
@@ -841,7 +1054,7 @@ const Profile: React.FC = () => {
                   </MuiList>
                 </Box>
 
-                {!isAmorChurch && (
+                {isAmorChurch ? null : (
                   <>
                     {/* Card histórico de Incidentes */}
                     <Box
@@ -895,64 +1108,64 @@ const Profile: React.FC = () => {
                         )}
                       </MuiList>
                     </Box>
+
+                    {/* Card adicionar novo Incidentes */}
+                    <Box
+                      sx={{
+                        width: "100%",
+                        maxWidth: "800px",
+                        backgroundColor: "white",
+                        borderRadius: "8px",
+                        boxShadow: 3,
+                        padding: "20px",
+                        marginBottom: "20px",
+                      }}
+                    >
+                      <Typography variant="h6" gutterBottom>
+                        Adicionar incidentes
+                      </Typography>
+
+                      <TextareaAutosize
+                        minRows={3}
+                        placeholder="Descreva o que aconteceu"
+                        value={newIncident}
+                        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                          setNewIncident(e.target.value)
+                        }
+                        style={{
+                          width: "100%",
+                          padding: "10px",
+                          marginTop: "10px",
+                        }}
+                      />
+                      <Box sx={{ marginTop: "20px" }}>
+                        <Select
+                          value={suspensionTime}
+                          onChange={handleSuspensionChange}
+                          displayEmpty
+                          fullWidth
+                          sx={{ marginBottom: "20px" }}
+                        >
+                          <MenuItem value="" disabled>
+                            Tempo de suspensão
+                          </MenuItem>
+                          {Object.values(PenaltyDuration).map((duration) => (
+                            <MenuItem key={duration} value={duration}>
+                              {duration}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </Box>
+                      <Button
+                        variant="contained"
+                        onClick={handleAddIncident}
+                        disabled={!newIncident || !suspensionTime}
+                      >
+                        Adicionar Incidente
+                      </Button>
+                    </Box>
                   </>
                 )}
-
-                {/* Card adicionar novo Incidentes */}
-                <Box
-                  sx={{
-                    width: "100%",
-                    maxWidth: "800px",
-                    backgroundColor: "white",
-                    borderRadius: "8px",
-                    boxShadow: 3,
-                    padding: "20px",
-                    marginBottom: "20px",
-                  }}
-                >
-                  <Typography variant="h6" gutterBottom>
-                    Adicionar incidentes
-                  </Typography>
-
-                  <TextareaAutosize
-                    minRows={3}
-                    placeholder="Descreva o que aconteceu"
-                    value={newIncident}
-                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                      setNewIncident(e.target.value)
-                    }
-                    style={{
-                      width: "100%",
-                      padding: "10px",
-                      marginTop: "10px",
-                    }}
-                  />
-                  <Box sx={{ marginTop: "20px" }}>
-                    <Select
-                      value={suspensionTime}
-                      onChange={handleSuspensionChange}
-                      displayEmpty
-                      fullWidth
-                      sx={{ marginBottom: "20px" }}
-                    >
-                      <MenuItem value="" disabled>
-                        Tempo de suspensão
-                      </MenuItem>
-                      {Object.values(PenaltyDuration).map((duration) => (
-                        <MenuItem key={duration} value={duration}>
-                          {duration}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </Box>
-                  <Button
-                    variant="contained"
-                    onClick={handleAddIncident}
-                    disabled={!newIncident || !suspensionTime}
-                  >
-                    Adicionar Incidente
-                  </Button>
-                </Box>
                 <Button
                   variant="contained"
                   disabled={errors}
@@ -965,7 +1178,7 @@ const Profile: React.FC = () => {
                   }}
                   onClick={handleSaveUser}
                 >
-                  Check-in
+                  Salvar
                 </Button>
               </Container>
               <Snackbar
@@ -984,6 +1197,68 @@ const Profile: React.FC = () => {
             </>
           )}
         </Box>
+        <Modal open={isModalOpenTicket} onClose={handleCloseModal}>
+          <Box
+            sx={{
+              position: "absolute",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              width: 400,
+              bgcolor: "background.paper",
+              boxShadow: 24,
+              p: 4,
+              borderRadius: "8px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 2,
+            }}
+          >
+            <Typography variant="h6" gutterBottom>
+              Qual o motivo do Free?
+            </Typography>
+            <TextField
+              label="Motivo"
+              multiline
+              rows={4}
+              variant="outlined"
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              fullWidth
+            />
+
+            <Button
+              onClick={() => {
+                handleCloseModal();
+                setisFree(true);
+              }}
+              variant="contained"
+              sx={{
+                backgroundColor: "#26d07c",
+                "&:hover": {
+                  backgroundColor: "#1fa968",
+                },
+              }}
+            >
+              Confirmar
+            </Button>
+            <Button
+              onClick={() => {
+                handleCloseModal();
+                setMotivo("");
+              }}
+              variant="contained"
+              sx={{
+                backgroundColor: "#26d07c",
+                "&:hover": {
+                  backgroundColor: "#1fa968",
+                },
+              }}
+            >
+              Cancelar
+            </Button>
+          </Box>
+        </Modal>
       </LocalizationProvider>
     </div>
   );
