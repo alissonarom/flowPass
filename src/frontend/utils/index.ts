@@ -104,3 +104,50 @@ export const useLogout = () => {
 
   return logout;
 };
+
+export function getPriceValue(
+  isFree: boolean,
+  selectedLot: { value: number | undefined } | null,
+  event: {
+    basePrice: number | undefined;
+    maleBasePrice: number | undefined;
+    femaleBasePrice: number | undefined;
+  },
+  profileData: { gender: string }
+): string {
+  // Se for gratuito, retorna "0,00"
+  if (isFree) {
+    return "0,00";
+  }
+
+  // Se tiver lote selecionado, retorna o valor do lote (convertido para string formatada)
+  if (selectedLot && selectedLot.value !== undefined) {
+    return selectedLot.value.toLocaleString("pt-BR", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
+
+  // Se o preço base do evento for diferente de zero, retorna ele (formatado)
+  if (
+    event.basePrice &&
+    event.basePrice !== 0 &&
+    event.basePrice !== undefined
+  ) {
+    return event.basePrice.toLocaleString("pt-BR", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
+
+  // Se não, retorna o preço base de acordo com o gênero (formatado)
+  const basePrice =
+    profileData.gender === "Masculino"
+      ? event.maleBasePrice
+      : event.femaleBasePrice;
+
+  return (basePrice ?? 0).toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}

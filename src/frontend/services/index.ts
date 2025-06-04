@@ -1,5 +1,13 @@
 import axios from "axios";
-import { IEvent, ILot, IPromoter, IUser, List } from "../types";
+import {
+  ILot,
+  IPromoter,
+  IUser,
+  UpdateHistoryData,
+  History,
+  IEventUpdate,
+} from "../types";
+import { Types } from "mongoose";
 
 const API_URL = process.env.REACT_APP_API_FP_BE;
 
@@ -18,7 +26,7 @@ interface LoginResponse {
 }
 
 // USERS -------------------------------------------------------------------------
-// Buscar todos os usuários
+
 export const getUsers = async () => {
   const response = await axios.get(`${API_URL}/users`);
   return response.data;
@@ -66,11 +74,14 @@ export const getUserById = async (userId: string) => {
 export const createOrUpdateUser = async (userData: IUser) => {
   try {
     const token = localStorage.getItem("token"); // Recupera o token do localStorage
+
     if (!token) {
       throw new Error("Token de autenticação não encontrado");
     }
 
-    console.log("token", token);
+    if (userData._id === "") {
+      delete userData._id;
+    }
 
     const response = await axios.post(`${API_URL}/users`, userData, {
       headers: {
@@ -113,7 +124,7 @@ export const checkUserByCpf = async (cpf: string) => {
 };
 
 // LISTAS ---------------------------------------------------------------
-// Buscar todas as listas
+
 export const getLists = async () => {
   try {
     const response = await axios.get(`${API_URL}/lists`);
@@ -124,19 +135,13 @@ export const getLists = async () => {
   }
 };
 
-// Criar listas
-export const createList = async (listData: {
-  title: string;
-  owner: string;
-  startDate: Date;
-  endDate: Date;
-  users: string[];
-  domain: string;
-  isExam: boolean;
-  eventId: string;
-}): Promise<List> => {
+export const createList = async (listData: any) => {
+  const { historico, ...data } = listData;
+  if (!historico) {
+    delete data.historico;
+  }
   try {
-    const response = await axios.post(`${API_URL}/lists`, listData);
+    const response = await axios.post(`${API_URL}/lists`, data);
     return response.data;
   } catch (error) {
     console.error("Erro ao criar lista:", error);
@@ -144,7 +149,6 @@ export const createList = async (listData: {
   }
 };
 
-// Atualizar listas
 export const updateList = async (
   id: string,
   listData: {
@@ -152,7 +156,7 @@ export const updateList = async (
     promotor?: string;
     startDate?: Date;
     endDate?: Date;
-    users?: string[];
+    historico?: string;
   }
 ) => {
   try {
@@ -165,7 +169,7 @@ export const updateList = async (
 };
 
 // PROMOTOR ---------------------------------------------------------------
-// Buscar todos os promotores
+
 export const getPromoters = async (): Promise<IPromoter[]> => {
   try {
     const response = await axios.get(`${API_URL}/promoters`);
@@ -176,7 +180,6 @@ export const getPromoters = async (): Promise<IPromoter[]> => {
   }
 };
 
-// Criar promotores
 export const createPromoter = async (
   promoterData: Omit<IPromoter, "_id">
 ): Promise<IPromoter> => {
@@ -189,7 +192,6 @@ export const createPromoter = async (
   }
 };
 
-// Atualizar promotores
 export const updatePromoter = async (
   id: string,
   promoterData: Partial<IPromoter>
@@ -275,6 +277,7 @@ export const updatePromotorCash = async (promotor: IUser, amount: number) => {
     throw error;
   }
 };
+
 // EVENTO ----------------------------------------------------------------------
 
 // Criar Eventos
@@ -283,9 +286,10 @@ export const createEvent = async (eventData: {
   owner: string;
   startDate: Date | null;
   endDate: Date | null;
+  listDate: Date | null;
   lists: string[];
   domain: string;
-  lot: ILot[];
+  lots: ILot[];
 }) => {
   try {
     const response = await axios.post(`${API_URL}/events`, eventData);
@@ -306,12 +310,215 @@ export const getEvents = async () => {
   }
 };
 
-export const updateEvent = async (id: string, eventData: IEvent) => {
+export const updateEvent = async (id: string, eventData: IEventUpdate) => {
   try {
     const response = await axios.put(`${API_URL}/events/${id}`, eventData);
     return response.data;
   } catch (error) {
     console.error("Erro ao atualizar o evento:", error);
+    throw error;
+  }
+};
+
+// HISTÓRICO ----------------------------------------------------------------------
+
+export const getHistory = async (): Promise<History[] | undefined> => {
+  try {
+    const response = await axios.get(`${API_URL}/histories`);
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      if (error.response) {
+        console.error("Erro na resposta:", error.response.data);
+        throw new Error(
+          error.response.data.error || "Erro ao buscar histórico"
+        );
+      } else if (error.request) {
+        console.error("Sem resposta:", error.request);
+        throw new Error("Sem resposta do servidor");
+      }
+    } else {
+      console.error("Erro de configuração:", (error as Error).message);
+      throw new Error("Erro ao configurar requisição");
+    }
+  }
+  return undefined; // Ensure all code paths return a value
+};
+
+export const getHistoryById = async (id: string): Promise<History> => {
+  try {
+    const response = await axios.get(`${API_URL}/histories/${id}`);
+    return response.data;
+  } catch (error) {
+    console.error("Erro ao buscar histórico:", error);
+    throw error;
+  }
+};
+
+export const createHistory = async (historyData: History): Promise<History> => {
+  try {
+    const response = await axios.post(`${API_URL}/histories`, historyData);
+    return response.data;
+  } catch (error) {
+    console.error("Erro ao criar histórico:", error);
+    throw error;
+  }
+};
+
+export const updateHistory = async (
+  id: Types.ObjectId,
+  historyData: UpdateHistoryData
+): Promise<History> => {
+  try {
+    const response = await axios.put(`${API_URL}/histories/${id}`, historyData);
+    return response.data;
+  } catch (error) {
+    console.error("Erro ao atualizar histórico:", error);
+    throw error;
+  }
+};
+
+export const deleteHistory = async (id: string): Promise<void> => {
+  try {
+    await axios.delete(`${API_URL}/histories/${id}`);
+  } catch (error) {
+    console.error("Erro ao deletar histórico:", error);
+    throw error;
+  }
+};
+
+export const addUserToHistory = async (
+  historyId: string,
+  userId: string
+): Promise<History> => {
+  try {
+    const response = await axios.post(
+      `${API_URL}/histories/${historyId}/users`,
+      { userId }
+    );
+    return response.data;
+  } catch (error) {
+    console.error("Erro ao adicionar usuário ao histórico:", error);
+    throw error;
+  }
+};
+
+export const updateUserInHistory = async (
+  historyId: Types.ObjectId | string,
+  userId: string,
+  updates: {
+    firstRound?: boolean;
+    secondRound?: boolean;
+    examScore?: number;
+    ticket?: {
+      paying: boolean;
+      reason: string;
+      approver: Types.ObjectId | null;
+    };
+  }
+) => {
+  try {
+    if (!historyId || !userId) {
+      throw new Error("IDs de histórico e usuário são obrigatórios");
+    }
+
+    const response = await axios.put(
+      `${API_URL}/histories/${encodeURIComponent(historyId.toString())}/users/${encodeURIComponent(userId)}`, // URL absoluta
+      updates,
+      {
+        headers: {
+          "Content-Type": "application/json",
+          // Adicione autenticação se necessário
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+      }
+    );
+    return response.data;
+  } catch (error) {
+    console.error("Erro ao atualizar usuário no histórico:", error);
+    throw error;
+  }
+};
+
+// LOTES ----------------------------------------------------------------------
+
+export const createLot = async (lotData: {
+  title: string;
+  quantity: number;
+  value: number;
+  eventId: string; // ID do evento
+  sold_out?: boolean;
+  users?: string[]; // IDs dos usuários
+}) => {
+  try {
+    const response = await axios.post(`${API_URL}/lots`, lotData);
+    return response.data;
+  } catch (error) {
+    console.error("Erro ao criar lote:", error);
+    throw error;
+  }
+};
+
+export const getLots = async () => {
+  try {
+    const response = await axios.get(`${API_URL}/lots`);
+    return response.data;
+  } catch (error) {
+    console.error("Erro ao buscar lotes:", error);
+    throw error;
+  }
+};
+
+export const getLotById = async (id: string) => {
+  try {
+    const response = await axios.get(`${API_URL}/lots/${id}`);
+    return response.data;
+  } catch (error) {
+    console.error("Erro ao buscar lote:", error);
+    throw error;
+  }
+};
+
+export const updateLot = async (id: string, lotData: Partial<ILot>) => {
+  try {
+    const response = await axios.put(`${API_URL}/lots/${id}`, lotData);
+    return response.data;
+  } catch (error) {
+    console.error("Erro ao atualizar o lote:", error);
+    throw error;
+  }
+};
+
+export const deleteLot = async (id: string) => {
+  try {
+    const response = await axios.delete(`${API_URL}/lots/${id}`);
+    return response.data;
+  } catch (error) {
+    console.error("Erro ao deletar o lote:", error);
+    throw error;
+  }
+};
+
+export const addUserToLot = async (lotId: string, userId: string) => {
+  try {
+    const response = await axios.post(`${API_URL}/lots/${lotId}/add-user`, {
+      userId,
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Erro ao adicionar usuário ao lote:", error);
+    throw error;
+  }
+};
+
+export const removeUserFromLot = async (lotId: string, userId: string) => {
+  try {
+    const response = await axios.post(`${API_URL}/lots/${lotId}/remove-user`, {
+      userId,
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Erro ao remover usuário do lote:", error);
     throw error;
   }
 };

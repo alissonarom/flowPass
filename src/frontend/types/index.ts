@@ -1,3 +1,6 @@
+import { ObjectId } from "mongodb";
+import { Types } from "mongoose";
+
 // Enums para os valores fixos
 export enum UserProfile {
   Usuário = "Usuário",
@@ -8,21 +11,55 @@ export enum UserProfile {
   Diretoria = "Diretoria",
 }
 
-// Interface para o histórico de listas
-export interface IListHistory {
-  listId: string;
-  name: string; // No frontend, podemos usar string em vez de ObjectId
-  joinedAt: Date;
-  leftAt?: Date;
-  firstRound?: boolean;
-  secondRound?: boolean;
+// Interface para o histórico
+export interface UpdateHistoryData {
+  name?: string;
+  listDate?: Date;
   isExam?: boolean;
   examScore?: number;
-  ticket: {
-    free: Boolean;
-    reason: string;
-    approver: string;
-  };
+  users?: HistoryUser[];
+  listId: string;
+}
+
+interface Ticket {
+  paying: boolean;
+  reason: string;
+  approver: Types.ObjectId | null;
+}
+
+interface HistoryUser {
+  id: any;
+  firstRound: boolean;
+  secondRound: boolean;
+  examScore: number;
+  ticket: Ticket;
+}
+
+export interface History {
+  _id?: ObjectId;
+  listId: string | null;
+  name: string;
+  joinedAt: Date;
+  listDate: Date | null;
+  users?: HistoryUser[];
+  isExam: boolean;
+  eventName: string;
+}
+
+export type IEventUpdate = Partial<IEvent> & {
+  lists?: string[]; // Especifica que podemos atualizar apenas lists
+};
+
+export interface History2 {
+  _id?: ObjectId;
+  listId: string;
+  joinedAt: Date;
+  name: string;
+  firstRound: boolean;
+  secondRound: boolean;
+  isExam: boolean;
+  examScore: number;
+  ticket: Ticket;
 }
 
 export enum PenaltyDuration {
@@ -32,14 +69,12 @@ export enum PenaltyDuration {
   SixMonths = "6 meses",
 }
 
-// Interface para as penalidades
 export interface IPenalty {
   observation: string;
   duration: PenaltyDuration;
   startDate: string;
 }
 
-// Interface principal do usuário
 export interface IUser {
   _id?: string;
   name: string;
@@ -49,31 +84,37 @@ export interface IUser {
   gender: string;
   profile: string;
   anniversary: boolean;
-  history: IListHistory[];
   penalties: IPenalty[];
-  currentLists: string[];
+  currentList?: string;
   cash: number;
   client_id: string;
   password?: string;
+  histories?: History[];
+  history?: History2[];
 }
 
 export interface List {
   _id?: string;
   title: string;
   owner: IUser;
-  users: IUser[];
   startDate: Date;
   endDate: Date;
   domain: string;
   isExam: boolean;
-  eventId: string;
+  eventId: IEvent;
+  historico?: History;
 }
 
 export interface ILot {
+  _id?: string;
   title: string;
   sold_out: boolean;
   quantity: number;
   value: number;
+  eventId: string;
+  maleLot: boolean;
+  femaleLot: boolean;
+  users?: IUser[];
 }
 
 export interface IPromoter {
@@ -87,7 +128,7 @@ export interface IPromoter {
 }
 
 export interface UserLocalStorage {
-  id: string;
+  _id: string;
   name: string;
   cpf: string;
   profile: string;
@@ -97,12 +138,15 @@ export interface UserLocalStorage {
 export interface IEvent {
   _id?: string;
   title: string;
-  owner: string;
+  owner: IUser;
   startDate: Date | null;
   endDate: Date | null;
   lists: List[];
   domain: string;
-  lot: ILot[];
+  lots: ILot[];
+  basePrice: number;
+  femaleBasePrice: number;
+  maleBasePrice: number;
 }
 
 export interface TabPanelProps {

@@ -1,11 +1,39 @@
 import React, { useEffect, useRef } from "react";
 import { Html5Qrcode, Html5QrcodeScanType } from "html5-qrcode";
+import {
+  AppBar,
+  Toolbar,
+  Box,
+  Chip,
+  Typography,
+  Tooltip,
+  IconButton,
+  Menu,
+  MenuItem,
+} from "@mui/material";
+import { useLocation } from "react-router-dom";
+import AccountCircle from "@mui/icons-material/AccountCircle";
+import MenuIcon from "@mui/icons-material/Menu";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import { UserLocalStorage } from "../types";
+import { useNavigate } from "react-router-dom";
+
+interface CustomAppBarProps {
+  isDesktop?: boolean;
+  user?: UserLocalStorage | null;
+  settings?: string[];
+  handleOpenUserMenu?: (event: React.MouseEvent<HTMLElement>) => void;
+  handleCloseUserMenu?: () => void;
+  handleToProfile?: () => void;
+  anchorElUser?: HTMLElement | null;
+  logout?: () => void;
+}
 
 interface QrCodeReaderProps {
   onScan: (decodedText: string) => void;
 }
 
-const QrCodeReader: React.FC<QrCodeReaderProps> = ({ onScan }) => {
+export const QrCodeReader: React.FC<QrCodeReaderProps> = ({ onScan }) => {
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
   const scannerContainerRef = useRef<HTMLDivElement>(null);
 
@@ -68,4 +96,100 @@ const QrCodeReader: React.FC<QrCodeReaderProps> = ({ onScan }) => {
   );
 };
 
-export default QrCodeReader;
+export const CustomAppBar: React.FC<CustomAppBarProps> = ({
+  isDesktop,
+  user,
+  settings,
+  handleOpenUserMenu,
+  handleCloseUserMenu,
+  anchorElUser,
+  handleToProfile,
+  logout,
+}) => {
+  const location = useLocation();
+  return (
+    <AppBar
+      position="static"
+      sx={{
+        backgroundColor: "#00df81",
+        height: "65px",
+        justifyContent: "center",
+        paddingInline: { xl: 10, md: 5, sm: "20px" },
+      }}
+    >
+      <Toolbar
+        sx={{
+          justifyContent: "space-between",
+          paddingInline: { xl: 10, md: 5, sm: 0 },
+        }}
+      >
+        <Box
+          component="img"
+          src="/flowpass-favicon.png"
+          alt="Logo"
+          sx={{
+            width: "50px",
+            height: "50px",
+            marginRight: { xs: "10px", sm: "20px" }, // Estilo responsivo
+          }}
+        />
+
+        <Box
+          sx={{ flexGrow: 0, alignItems: "center" }}
+          flexDirection="row"
+          display={"flex"}
+        >
+          <Chip
+            label={user?.profile}
+            size="small"
+            color="secondary"
+            sx={{ marginInline: 5 }}
+          />
+          {isDesktop && (
+            <Typography variant="h6" sx={{ marginRight: "20px" }}>
+              {user?.name}
+            </Typography>
+          )}
+          <Tooltip title="Seu Menú">
+            <IconButton onClick={handleOpenUserMenu} sx={{ p: 0 }}>
+              {isDesktop ? <AccountCircle /> : <MenuIcon />}
+            </IconButton>
+          </Tooltip>
+          <Menu
+            sx={{ mt: "45px" }}
+            id="menu-appbar"
+            anchorEl={anchorElUser}
+            anchorOrigin={{
+              vertical: "top",
+              horizontal: "right",
+            }}
+            keepMounted
+            transformOrigin={{
+              vertical: "top",
+              horizontal: "right",
+            }}
+            open={Boolean(anchorElUser)}
+            onClose={handleCloseUserMenu}
+          >
+            {settings?.map((setting) => (
+              <MenuItem
+                key={setting}
+                onClick={() => {
+                  if (setting === "Logout") {
+                    logout?.(); // Chama a função logout
+                  } else if (setting === "Perfil") {
+                    handleToProfile?.();
+                  } else {
+                    handleCloseUserMenu?.();
+                  }
+                }}
+              >
+                <Typography sx={{ textAlign: "center" }}>{setting}</Typography>
+              </MenuItem>
+            ))}
+          </Menu>
+        </Box>
+      </Toolbar>
+    </AppBar>
+  );
+};

@@ -3,8 +3,6 @@
 
 import React, { useState } from "react";
 import {
-  AppBar,
-  Toolbar,
   Container,
   Typography,
   TextField,
@@ -15,11 +13,13 @@ import {
   Alert,
   CircularProgress,
   useMediaQuery,
+  Grid2,
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import { handleCpfChange, validateCPF } from "../utils";
 import { handleLogin } from "../services";
 import { AxiosError } from "axios";
+import bgImage from "../../assets/bgmaio2.png";
 
 const Login: React.FC = () => {
   const [cpf, setCpf] = useState("");
@@ -77,9 +77,7 @@ const Login: React.FC = () => {
     }
   };
 
-  const handlePassword = () => {
-    console.log("Alterar senha");
-  };
+  const handlePassword = () => {};
 
   const editaCpf = (e: React.ChangeEvent<HTMLInputElement>) => {
     setCpf(handleCpfChange(e.target.value));
@@ -91,154 +89,155 @@ const Login: React.FC = () => {
 
   return (
     <>
-      {/* Barra superior */}
-      <AppBar
-        position="static"
-        sx={{
-          backgroundColor: "#00df81",
-          height: "65px",
-          justifyContent: "center",
-          paddingInline: 10,
-        }}
-      >
-        <Toolbar
-          sx={{
-            justifyContent: { xs: "center", md: "center" },
-          }}
-        >
-          <img
-            src="/logo-top-bar-bco.png"
-            alt="Logo"
-            style={{ width: "120px", height: "45px" }}
-          />
-        </Toolbar>
-      </AppBar>
-
       {/* Corpo */}
       <Container
         sx={{
           display: { xs: "block", sm: "flex" },
-          justifyContent: "center",
-          height: "calc(100vh - 65px)",
-          padding: 2,
+          height: "100vh",
+          paddingInline: "0px !important",
+          maxWidth: "100% !important",
         }}
       >
-        <Grid container spacing={2} alignItems="center">
-          {/* Coluna 1: Typography */}
-          <Grid
-            item
-            xs={12}
-            md={6}
-            sx={{
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "center",
-              alignItems: "center",
-            }}
-          >
-            <Typography
-              gutterBottom
-              textAlign={{ xs: "center", md: "center" }}
-              fontSize={isDesktop ? "2.5rem" : "1.5rem"}
-            >
-              Digite o seu CPF e senha do FlowPass para iniciar sessão
-            </Typography>
-          </Grid>
+        {/* Coluna esquerda (4/6) - Imagem de fundo */}
+        <Box
+          sx={{
+            display: { xs: "none", md: "block" },
+            width: "66.666%",
+            backgroundImage: `url(${bgImage})`,
+            backgroundRepeat: "no-repeat",
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+          }}
+        />
 
-          {/* Coluna 2: Box com campo de CPF e botão */}
-          <Grid
-            item
-            xs={12}
-            md={6}
+        {/* Coluna direita (2/6) - Conteúdo */}
+        <Box
+          sx={{
+            width: { xs: "100%", md: "33.333%" },
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 4,
+          }}
+        >
+          {/* Logo e texto "Flow Pass" */}
+          <Box
             sx={{
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
+              marginBottom: 4,
             }}
           >
-            <Box
+            <Grid2>
+              <img
+                src="flowpass-favicon.png"
+                alt="Logo"
+                style={{
+                  width: "80px",
+                  marginBottom: "16px",
+                }}
+              />
+            </Grid2>
+            <Typography
+              variant="subtitle1"
               sx={{
-                width: { xs: "100%", md: "70%" },
-                border: "1px solid lightgray", // Borda cinza claro
-                borderRadius: "8px", // Cantos arredondados
-                padding: "32px", // Espaçamento interno
+                color: "text.secondary",
+                letterSpacing: "-0.8px",
+                fontWeight: 700,
+                marginTop: "-20px",
               }}
             >
-              <TextField
-                label="Insira seu CPF"
-                variant="outlined"
-                fullWidth
-                value={cpf}
-                onChange={editaCpf}
-                error={errorCpf}
-                helperText={errorCpf ? "CPF inválido ou não encontrado." : ""}
-                margin="dense"
-                sx={{ marginBottom: "20px" }}
-              />
-              <TextField
-                label="Insira sua senha"
-                variant="outlined"
-                fullWidth
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                error={errorPassword}
-                helperText={errorPassword ? "Senha incorreta" : ""}
-                margin="dense"
-                type="password"
-              />
-              <Grid
-                container
-                sx={{
-                  display: "flex",
-                  flexDirection: "column",
-                }}
-              >
-                <Grid item>
-                  <Button
-                    variant="contained"
-                    sx={{
-                      backgroundColor: "#26d07c",
-                      marginTop: "15px",
-                      "&:hover": { backgroundColor: "#1fa968" },
-                      width: "100%",
-                    }}
-                    disabled={cpf.length !== 14 || !password}
-                    onClick={handleCheck}
-                  >
-                    {loading ? (
-                      <CircularProgress
-                        sx={{
-                          color: "white",
-                        }}
-                        size={24}
-                      />
-                    ) : (
-                      "Iniciar sessão"
-                    )}
-                  </Button>
-                </Grid>
-                <Grid item>
-                  <Button
-                    variant="text"
-                    sx={{
-                      marginTop: "10px",
-                      "&:hover": { backgroundColor: "#caffd2" },
-                      width: "100%", // Botão com largura total
-                      alignSelf: "flex-start",
-                      color: "#021b1a",
-                    }}
-                    onClick={handlePassword}
-                  >
-                    Esqueceu a senha?
-                  </Button>
-                </Grid>
+              você no flow
+            </Typography>
+          </Box>
+
+          {/* Formulário de login */}
+          <Box
+            sx={{
+              width: "100%",
+              maxWidth: "400px",
+              border: "1px solid lightgray",
+              borderRadius: "8px",
+              padding: "32px",
+            }}
+          >
+            <TextField
+              label="Insira seu CPF"
+              variant="outlined"
+              fullWidth
+              value={cpf}
+              onChange={editaCpf}
+              error={errorCpf}
+              helperText={errorCpf ? "CPF inválido ou não encontrado." : ""}
+              margin="dense"
+              sx={{ marginBottom: "20px" }}
+            />
+            <TextField
+              label="Insira sua senha"
+              variant="outlined"
+              fullWidth
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              error={errorPassword}
+              helperText={errorPassword ? "Senha incorreta" : ""}
+              margin="dense"
+              type="password"
+            />
+            <Grid
+              container
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              <Grid item>
+                <Button
+                  variant="contained"
+                  sx={{
+                    backgroundColor: "#26d07c",
+                    marginTop: "15px",
+                    "&:hover": { backgroundColor: "#1fa968" },
+                    width: "100%",
+                  }}
+                  disabled={cpf.length !== 14 || !password}
+                  onClick={handleCheck}
+                >
+                  {loading ? (
+                    <CircularProgress
+                      sx={{
+                        color: "white",
+                      }}
+                      size={24}
+                    />
+                  ) : (
+                    "Iniciar sessão"
+                  )}
+                </Button>
               </Grid>
-            </Box>
-          </Grid>
-        </Grid>
+              <Grid item>
+                <Button
+                  variant="text"
+                  sx={{
+                    marginTop: "10px",
+                    "&:hover": { backgroundColor: "#caffd2" },
+                    width: "100%",
+                    alignSelf: "flex-start",
+                    color: "#021b1a",
+                  }}
+                  onClick={handlePassword}
+                >
+                  Esqueceu a senha?
+                </Button>
+              </Grid>
+            </Grid>
+          </Box>
+        </Box>
+
         <Snackbar
           open={snackbarOpen}
-          autoHideDuration={3000} // Fecha automaticamente após 6 segundos
+          autoHideDuration={3000}
           onClose={handleCloseSnackbar}
         >
           <Alert

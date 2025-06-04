@@ -9,8 +9,6 @@ import {
   Button,
   ListItem,
   ListItemText,
-  AppBar,
-  Toolbar,
   IconButton,
   Grid,
   TextField,
@@ -25,29 +23,36 @@ import {
   ListItemIcon,
   List as MuiList,
   useMediaQuery,
-  Tooltip,
-  Menu,
   Checkbox,
   FormGroup,
   FormControlLabel,
-  Paper,
+  Divider,
+  InputAdornment,
 } from "@mui/material";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import Chip from "@mui/material/Chip";
 import Stack from "@mui/material/Stack";
 import AddIcon from "@mui/icons-material/Add";
-import EditIcon from "@mui/icons-material/Edit";
-import DeleteIcon from "@mui/icons-material/Delete";
-import MenuIcon from "@mui/icons-material/Menu";
 import ErrorIcon from "@mui/icons-material/Error";
 import {
   createOrUpdateUser,
+  getEvents,
+  getHistory,
   getLists,
   getUserProfileByCpf,
-  updateList,
   updatePromotorCash,
+  updateUserInHistory,
 } from "../services/index";
-import { IPenalty, IUser, PenaltyDuration, List, IListHistory } from "../types";
+import {
+  IPenalty,
+  IUser,
+  PenaltyDuration,
+  List,
+  History,
+  History2,
+  IEvent,
+  ILot,
+} from "../types";
 import { DatePicker } from "@mui/x-date-pickers";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
@@ -59,24 +64,30 @@ import {
   useLogout,
 } from "../utils";
 import {
-  AccountCircle,
   CalendarMonth,
   GppMaybe,
   Bookmark,
+  InsertLink,
+  DriveFolderUpload,
 } from "@mui/icons-material";
 import BookmarkBorderIcon from "@mui/icons-material/BookmarkBorder";
-import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import { CustomAppBar } from "../components";
+import { Types } from "mongoose";
 
 const modalStyle = {
   position: "absolute",
   top: "50%",
   left: "50%",
   transform: "translate(-50%, -50%)",
-  width: "50%",
+  width: "90%",
   bgcolor: "background.paper",
   boxShadow: 24,
-  p: 4,
+  padding: "10px",
   borderRadius: "8px",
+  overflow: "auto",
+  height: "auto",
+  minHeight: "200px",
+  maxHeight: "600px",
 };
 
 const Profile: React.FC = () => {
@@ -85,6 +96,7 @@ const Profile: React.FC = () => {
   const [searchParams] = useSearchParams();
   const cpf = (searchParams.get("cpf") || "").replace(/\D/g, "");
   const [profileData, setProfileData] = useState<IUser>({
+    _id: "",
     name: "",
     cpf: cpf,
     birthDate: null,
@@ -92,9 +104,9 @@ const Profile: React.FC = () => {
     gender: "",
     profile: "",
     anniversary: false,
-    history: [],
+    histories: [],
     penalties: [],
-    currentLists: [],
+    currentList: "",
     cash: 0,
     client_id: user?.client_id || "",
   });
@@ -117,10 +129,29 @@ const Profile: React.FC = () => {
   const isDesktop = useMediaQuery("(min-width: 768px)");
   const settings = ["Perfil", "Logout"];
   const [activePenalties, setActivePenalties] = useState<boolean>(false);
-  const navigate = useNavigate();
   const [isFree, setisFree] = useState<boolean>(false);
   const [motivo, setMotivo] = useState<string>("");
   const [isModalOpenTicket, setIsModalOpenTicket] = useState(false);
+  const [firstRound, setFirstRound] = useState(false);
+  const [secondRound, setSecondRound] = useState(false);
+  const [historyId, setHistoryId] = useState<Types.ObjectId | string>("");
+  const [userHistories, setUserHistories] = useState<History[]>([]);
+  const [selectedList, setSelectedList] = useState<List | null>(null);
+  const [examScore, setExameScore] = useState<number | null>(0);
+  const isAluno = user?.profile === "Aluno";
+  const [replacement, setReplacement] = useState([
+    {
+      link: [
+        "https://drive.google.com/uc?export=view&id=1YWFyUBVzDWbVuC6uIpjxmy7N9v-k6tuX",
+        "https://drive.google.com/uc?export=view&id=1OtkJPmnHv8IKJGLDfUZhZ3xLjHLAGrKK",
+      ],
+      title: "Grade Curricular - Módulos",
+    },
+  ]);
+  const [events, setEvents] = useState<IEvent[]>([]);
+  const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
+  const [basePrice, setBasePrice] = useState(0);
+  const [isComum, setIsComum] = useState(false);
 
   const isPenaltyActive = (penalty: IPenalty): boolean => {
     const today = new Date();
@@ -180,142 +211,94 @@ const Profile: React.FC = () => {
     setIsModalOpenTicket(false);
   };
 
-  const handleSelectList = async (id: string) => {
+  const handleSelectList = async (list: List) => {
+    setSelectedList(list);
+    setHistoryId(list.historico?._id || "");
+    console.log("Selected List:", list);
     try {
-      // Verifica se o usuário já está na lista
-      const userAlreadyInList = profileData.currentLists.includes(id);
-
-      if (userAlreadyInList) {
-        setSnackbarMessage("Usuário já está nesta lista");
-        setSnackbarSeverity("error");
-        setSnackbarOpen(true);
-        return;
-      }
-
-      // Verifica se o usuário já tem um registro de entrada na lista
-      const hasExistingEntry = profileData.history.some(
-        (entry) => entry.listId === id
-      );
-
-      // Atualiza o estado profileData (localmente)
       setProfileData((prevProfileData) => ({
         ...prevProfileData,
-        currentLists: [id], // Adiciona o ID da lista
-        history: hasExistingEntry
-          ? prevProfileData.history // Mantém o histórico existente
-          : [
-              ...prevProfileData.history,
-              {
-                listId: id, // ID da lista
-                name: lista.find((list) => list._id === id)?.title || "", // Nome da lista
-                joinedAt: new Date(), // Data de entrada
-                leftAt: lista.find((list) => list._id === id)?.endDate, // Data de saída
-                ticket: {
-                  free: isFree,
-                  reason: motivo,
-                  approver: user?.id || "",
-                },
-              },
-            ],
+        currentList: list._id || "", // Ensure currentList is always a string
       }));
+      const currentEvent = events.find(
+        (event) => event._id === list.eventId?.toString()
+      );
+      setSelectedEvent(currentEvent || null);
 
-      await updateList(id, {
-        users:
-          lista
-            .find((list) => list._id === id)
-            ?.users?.filter((user) => user._id !== profileData._id)
-            .map((user) => user._id)
-            .filter((id): id is string => id !== undefined) || [], // Ensures only string[] (IDs)
-      });
-
-      // 3. Atualiza o usuário no backend (para limpar currentLists)
-      await createOrUpdateUser({
-        ...profileData,
-        currentLists: [id], // Garante que o backend também reflita a remoção
-      });
-
-      let promotor = lista.find((list) => list._id === id)?.owner;
-
-      if (promotor && !isFree) {
-        await updatePromotorCash(promotor, 5);
-      } else {
-        console.error("Promotor not found for the selected list.");
-      }
-
-      // Fecha o modal
       handleCloseModal();
     } catch (error) {
       console.error("Erro ao adicionar usuário à lista:", error);
     }
   };
 
-  const handleRemoveFromList = async () => {
-    try {
-      // Verifica se o usuário está em uma lista ativa
-      if (!isUserInActiveList(profileData, lista)) {
-        return;
-      }
-
-      // Obtém o ID da lista atual
-      const currentListId = profileData.currentLists[0]; // Assumindo que o usuário está em apenas uma lista
-
-      // 2. Remove o usuário da lista no backend
-      await updateList(currentListId, {
-        users:
-          lista
-            .find((list) => list._id === currentListId)
-            ?.users?.filter((user) => user._id !== profileData._id)
-            .map((user) => user._id)
-            .filter((id): id is string => id !== undefined) || [], // Ensures only string[] (IDs)
-      });
-
-      // 3. Atualiza o usuário no backend (para limpar currentLists)
-      await createOrUpdateUser({
-        ...profileData,
-        currentLists: [], // Garante que o backend também reflita a remoção
-      });
-
-      // Feedback visual
-      setSnackbarMessage("Usuário removido da lista com sucesso!");
-      setSnackbarSeverity("success");
-      setSnackbarOpen(true);
-    } catch (error) {
-      console.error("Erro ao remover o usuário da lista:", error);
-      setSnackbarMessage(
-        "Erro ao remover o usuário da lista. Tente novamente."
-      );
-      setSnackbarSeverity("error");
-      setSnackbarOpen(true);
-    }
-  };
+  // const handleRemoveFromList = async () => {
+  //   try {
+  //     // Verifica se o usuário está em uma lista ativa
+  //     if (!isUserInActiveList(profileData, lista)) {
+  //       return;
+  //           // Obtém o ID da lista atual
+  //     const currentListId = profileData.currentList; // Assumindo que o usuário está em apenas uma list      // 2. Remove o usuário da lista no backend
+  //     await axios.put(`/histories/${historyId}`, {
+  //       userId,
+  //       firstRound: false, // ou defina conforme sua lógica
+  //       secondRound: false, // ou defina conforme sua lógica
+  //       free: false, // ou defina conforme sua lógica
+  //       reason: "", // preencha conforme necessário
+  //       approver: null // ou defina o ID do aprovador se aplicável
+  //     })      // 3. Atualiza o usuário no backend (para limpar currentLists)
+  //     await createOrUpdateUser({
+  //       ...profileData,
+  //       currentLists: [], // Garante que o backend também reflita a remoção
+  //     })      // Feedback visual
+  //     setSnackbarMessage("Usuário removido da lista com sucesso!");
+  //     setSnackbarSeverity("success");
+  //     setSnackbarOpen(true);
+  //   }
+  // } catch (error) {
+  //     console.error("Erro ao remover o usuário da lista:", error);
+  //     setSnackbarMessage(
+  //       "Erro ao remover o usuário da lista. Tente novamente."
+  //     );
+  //     setSnackbarSeverity("error");
+  //     setSnackbarOpen(true);
+  //     // };
 
   const handleSaveUser = async () => {
     try {
-      // 1. Atualiza o usuário no backend
-      const user = await createOrUpdateUser(profileData);
+      const userToUpdate = {
+        ...profileData,
+        currentLists: profileData.currentList || undefined, // Remove array vazio
+      };
 
-      // 2. Atualiza as listas no backend (se necessário)
-      if (profileData.currentLists.length > 0) {
-        const listId = profileData.currentLists[0]; // Assumindo que o usuário está em apenas uma lista
-        await updateList(listId, {
-          users: [
-            ...(lista
-              .find((list) => list._id === listId)
-              ?.users?.map((user) => user._id)
-              .filter((id): id is string => id !== undefined) || []), // Mapeia e filtra os _id dos usuários existentes
-            profileData._id ?? "", // Adiciona o _id do novo usuário ou uma string vazia como fallback
-          ],
+      // Certifique-se de obter o ID correto do usuário criado/atualizado
+      const updatedUser = await createOrUpdateUser(userToUpdate);
+      const userId = updatedUser._id || profileData._id;
+
+      if (!userId) {
+        throw new Error("ID do usuário não disponível");
+      }
+
+      // Verifique se historyId é válido
+      if (profileData.profile === "Usuário" && historyId) {
+        await updateUserInHistory(historyId.toString(), userId.toString(), {
+          firstRound,
+          secondRound,
+          ticket: { paying: isFree, reason: motivo, approver: userId },
+          ...(examScore !== undefined && { examScore: Number(examScore) }),
         });
       }
 
-      // Exibe mensagem de sucesso
+      let promotor = selectedList?.owner;
+      if (promotor && !isFree) {
+        await updatePromotorCash(promotor, 5);
+      }
+
       setSnackbarMessage("Informações do usuário salvas com sucesso!");
       setSnackbarSeverity("success");
       setSnackbarOpen(true);
     } catch (error) {
       console.error("Erro ao salvar/atualizar usuário:", error);
 
-      // Exibe mensagem de erro
       setSnackbarMessage(
         "Erro ao salvar informações do usuário. Tente novamente."
       );
@@ -341,15 +324,9 @@ const Profile: React.FC = () => {
     setAnchorElUser(event.currentTarget);
   };
 
-  const isUserInActiveList = (profileData: any, lista: any[]) => {
-    // Verifica se currentLists é um array
-    if (!Array.isArray(profileData.currentLists)) {
-      console.error("currentLists não é um array:", profileData.currentLists);
-      return false;
-    }
-
+  const isUserInActiveList = (profileData: IUser, lista: List[]) => {
     // Verifica se o usuário não está em nenhuma lista
-    if (profileData.currentLists.length === 0) {
+    if (!profileData.currentList) {
       return false;
     }
 
@@ -361,42 +338,67 @@ const Profile: React.FC = () => {
     });
 
     // Verifica se o usuário está em alguma lista ativa
-    return profileData.currentLists.some((userListId: string) =>
-      activeLists.some((list) => list._id === userListId)
-    );
+    return activeLists.some((list) => list._id === profileData.currentList);
   };
 
   const logout = useLogout();
 
   useEffect(() => {
-    const fetchUserProfile = async () => {
-      try {
-        if (!cpf) throw new Error("CPF não informado");
+    let isMounted = true; // Flag para controle de montagem
 
-        const profile = await getUserProfileByCpf(cpf); // Usa a função do serviço
+    const fetchData = async () => {
+      try {
+        if (!cpf) {
+          throw new Error("CPF não informado");
+        }
+
+        setLoading(true);
+
+        // 1. Busca o perfil do usuário
+        const profile = await getUserProfileByCpf(cpf);
+
+        if (!isMounted) return; // Evita atualização se componente desmontou
 
         if (profile) {
-          setProfileData({
-            ...profile,
-            profile: profile.profile, // Atribui o valor diretamente
-          });
+          setProfileData(profile);
+
+          // 2. Busca os históricos em paralelo ou sequencial conforme necessidade
+          const histories = await fetchHistories(profile._id || "");
+
+          if (isMounted) {
+            // Atualiza estados se componente ainda montado
+            setUserHistories(histories);
+          }
         }
       } catch (error) {
-        console.error("Erro ao buscar perfil do usuário:", error);
+        if (isMounted) {
+          console.error("Erro ao buscar dados do usuário:", error);
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
-    fetchUserProfile();
+    fetchData();
+
+    return () => {
+      isMounted = false; // Limpeza no desmontar do componente
+    };
   }, [cpf]);
 
   useEffect(() => {
-    setErrors(profileData.name === "" || profileData.gender === "");
+    setErrors(
+      profileData.name === "" ||
+        profileData.gender === "" ||
+        profileData.profile === ""
+    );
   }, [profileData]);
 
   useEffect(() => {
     fetchLists();
+    fetchEvents();
   }, []);
 
   const fetchLists = async () => {
@@ -423,12 +425,7 @@ const Profile: React.FC = () => {
         // Verifica se o domain é igual ao client_id do usuário
         if (list.domain === user?.client_id) {
           // Se o domain for "amorChurch", filtra também por startDate igual a today
-          if (list.domain === "amorChurch") {
-            return (
-              startDateWithoutTime.getTime() === todayWithoutTime.getTime()
-            );
-          }
-          // Caso contrário, retorna true (filtra apenas por domain)
+          startDateWithoutTime.getTime() === todayWithoutTime.getTime();
           return true;
         }
         // Se o domain não for igual ao client_id do usuário, retorna false
@@ -436,8 +433,53 @@ const Profile: React.FC = () => {
       });
 
       setLista(filteredLists); // Atualiza o estado com as listas filtradas
+      console.log("Filtered Lists:", filteredLists);
     } catch (error) {
       console.error("Erro ao carregar listas:", error);
+    }
+  };
+
+  const fetchHistories = async (userId: string): Promise<History[]> => {
+    try {
+      const histories = await getHistory();
+
+      // Garante que temos um array válido (ou vazio)
+      const safeHistories = Array.isArray(histories) ? histories : [];
+
+      if (user?.profile === "Mentoria" || user?.profile === "Diretoria") {
+        return safeHistories.filter((history) => {
+          // Verificação completa com optional chaining
+          return history.users?.[0]?.id?.client_id === "amorChurch";
+        });
+      }
+
+      return safeHistories.filter((history) => {
+        return history.users?.some((userHistory) => {
+          // Verificação completa do ID
+          return userHistory?.id?._id?.toString() === userId;
+        });
+      });
+    } catch (error) {
+      console.error("Erro ao filtrar históricos:", error);
+      return [];
+    }
+  };
+
+  const fetchEvents = async () => {
+    setLoading(true);
+    try {
+      const data = await getEvents();
+
+      // Verifica se user existe antes de filtrar
+      const filteredEvents = user
+        ? data.filter((event: IEvent) => event.domain === user.client_id)
+        : data; // Retorna todos se não houver user
+
+      setEvents(filteredEvents);
+    } catch (error) {
+      console.error("Erro ao carregar Eventos:", error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -448,108 +490,36 @@ const Profile: React.FC = () => {
     setActivePenalties(active.length > 0);
   }, [profileData.penalties]);
 
-  const updateHistoryEntry = (
-    index: number,
-    field: string,
-    value: boolean | number
-  ) => {
-    const updatedHistory = [...profileData.history]; // Cria uma cópia do histórico
-    updatedHistory[index] = { ...updatedHistory[index], [field]: value }; // Atualiza o campo específico
-    setProfileData({ ...profileData, history: updatedHistory }); // Atualiza o estado
+  const getAulaDoDia = (listas: List[]) => {
+    const hoje = new Date().toDateString(); // Formato: "Tue May 21 2024"
+
+    return listas.find((lista) => {
+      const dataLista = new Date(lista.startDate).toDateString();
+      return dataLista === hoje && !lista.isExam; // Adicione `&& !lista.isExam` se quiser excluir exames
+    });
   };
+
+  const aulaDoDia = getAulaDoDia(lista);
+  const label = aulaDoDia ? aulaDoDia.title : "Sem aula hoje";
 
   return (
     <div style={{ backgroundColor: "#EDEDED", minHeight: "100vh" }}>
       <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ptBR}>
-        <AppBar
-          position="static"
-          sx={{
-            backgroundColor: "rgba(0, 223, 129, 0.85)",
-            height: "65px",
-            justifyContent: "center",
-            position: "fixed",
-            top: 0,
-            zIndex: 10,
-          }}
-        >
-          <Toolbar
-            sx={{
-              justifyContent: "space-between",
-              paddingInline: { xl: 10, md: 5, sm: 0 },
-            }}
-          >
-            <Box sx={{ flexGrow: 0 }} flexDirection="row" display={"flex"}>
-              <IconButton
-                onClick={() => navigate("/checkin")}
-                sx={{ color: "white" }}
-              >
-                <ArrowBackIcon />
-              </IconButton>
-              <Box
-                component="img"
-                src="/logo-top-bar-bco.png"
-                alt="Logo"
-                sx={{
-                  width: "120px",
-                  height: "45px",
-                  marginInline: { xs: "10px", sm: "20px" },
-                }}
-              />
-            </Box>
-
-            <Box sx={{ flexGrow: 0 }} flexDirection="row" display={"flex"}>
-              {isDesktop && (
-                <Typography variant="h6" sx={{ marginRight: "20px" }}>
-                  {user?.name}
-                </Typography>
-              )}
-              <Tooltip title="Open settings">
-                <IconButton onClick={handleOpenUserMenu} sx={{ p: 0 }}>
-                  {isDesktop ? <AccountCircle /> : <MenuIcon />}
-                </IconButton>
-              </Tooltip>
-              <Menu
-                sx={{ mt: "45px" }}
-                id="menu-appbar"
-                anchorEl={anchorElUser}
-                anchorOrigin={{
-                  vertical: "top",
-                  horizontal: "right",
-                }}
-                keepMounted
-                transformOrigin={{
-                  vertical: "top",
-                  horizontal: "right",
-                }}
-                open={Boolean(anchorElUser)}
-                onClose={handleCloseUserMenu}
-              >
-                {settings.map((setting) => (
-                  <MenuItem
-                    key={setting}
-                    onClick={() => {
-                      if (setting === "Logout") {
-                        logout(); // Chama a função logout
-                      } else {
-                        handleCloseUserMenu(); // Chama a função handleCloseUserMenu
-                      }
-                    }}
-                  >
-                    <Typography sx={{ textAlign: "center" }}>
-                      {setting}
-                    </Typography>
-                  </MenuItem>
-                ))}
-              </Menu>
-            </Box>
-          </Toolbar>
-        </AppBar>
+        <CustomAppBar
+          isDesktop={isDesktop}
+          user={user}
+          settings={settings}
+          handleOpenUserMenu={handleOpenUserMenu}
+          handleCloseUserMenu={handleCloseUserMenu}
+          anchorElUser={anchorElUser}
+          logout={logout}
+        />
         <Box
           width="100%"
           display="flex"
           alignItems="center"
           justifyContent="center"
-          paddingTop={{ xs: "85px" }}
+          paddingTop={{ xs: "20px" }}
           flexDirection={{ xs: "column", md: "column" }}
           sx={{
             backgroundColor: "#EDEDED",
@@ -559,6 +529,7 @@ const Profile: React.FC = () => {
             <CircularProgress style={{ color: "#00df81" }} size={64} />
           ) : (
             <>
+              {/* Preço dinâmico*/}
               <Stack
                 direction="row"
                 sx={{
@@ -572,7 +543,7 @@ const Profile: React.FC = () => {
                 {isAmorChurch ? (
                   <Chip
                     icon={<CalendarMonth />}
-                    label={lista.length ? lista[0]?.title : "Sem aula hoje"}
+                    label={label}
                     color={"success"}
                     variant="filled"
                     sx={{
@@ -608,19 +579,19 @@ const Profile: React.FC = () => {
                         label={
                           profileData.profile == "Promotor"
                             ? `Promotor: ${profileData.name}`
-                            : !isUserInActiveList(profileData, lista)
-                              ? "Adicione o usuário numa lista"
-                              : `LISTA: ${lista.find((list) => list._id === profileData.currentLists[0])?.title}`
+                            : selectedList?.title
+                              ? `LISTA: ${selectedList?.title}`
+                              : "Adicione o usuário numa lista"
                         }
                         color={
                           profileData.profile == "Promotor" ||
-                          isUserInActiveList(profileData, lista)
+                          selectedList?.title
                             ? "primary"
                             : "warning"
                         }
                         sx={{
                           width: "100%",
-                          justifyContent: "flex-start",
+                          justifyContent: "center",
                           minWidth: "250px",
                           color: "white",
                         }}
@@ -632,61 +603,34 @@ const Profile: React.FC = () => {
 
                 {!activePenalties &&
                 profileData.profile !== "Promotor" &&
-                !isAmorChurch ? (
-                  !isUserInActiveList(profileData, lista) ? (
-                    <IconButton
-                      onClick={handleOpenModal}
-                      sx={{
-                        color: "white",
-                        backgroundColor: "#ed6c02",
-                        "&:hover": { backgroundColor: "#f3862d" },
-                      }}
-                    >
-                      <AddIcon />
-                    </IconButton>
-                  ) : (
-                    <IconButton
-                      onClick={handleRemoveFromList} // Chama a função para remover da lista
-                      sx={{
-                        gap: "10px",
-                        color: "white",
-                        backgroundColor: "#26d07c",
-                        "&:hover": {
-                          backgroundColor: "#1fa968",
-                        },
-                      }}
-                    >
-                      <DeleteIcon />
-                    </IconButton>
-                  )
-                ) : null}
-                {profileData.profile == "Promotor" && (
-                  <Box
+                !isAmorChurch &&
+                !selectedList ? (
+                  <IconButton
+                    onClick={handleOpenModal}
                     sx={{
-                      flexDirection: "row",
-                      display: "flex",
-                      justifyContent: "center",
+                      color: "white",
+                      backgroundColor: "#ed6c02",
+                      "&:hover": { backgroundColor: "#f3862d" },
                     }}
+                    disabled={isComum} // Desabilita o botão se for aluno
                   >
-                    <Typography
-                      variant="h6"
-                      gutterBottom
-                      sx={{ display: "block", color: "#03624c" }}
-                    >
-                      R$
-                    </Typography>
-                    <Typography
-                      variant="h3"
-                      gutterBottom
-                      sx={{ display: "block", color: "#03624c" }}
-                    >
-                      {profileData.cash.toString() === "0"
-                        ? "0,00"
-                        : profileData.cash.toString()}
-                    </Typography>
-                  </Box>
-                )}
-                {/* Modal para seleção de promotor */}
+                    <AddIcon />
+                  </IconButton>
+                ) : // <IconButton
+                //   onClick={handleRemoveFromList} // Chama a função para remover da lista
+                //   sx={{
+                //     gap: "10px",
+                //     color: "white",
+                //     backgroundColor: "#26d07c",
+                //     "&:hover": {
+                //       backgroundColor: "#1fa968",
+                //     },
+                //   }}
+                // >
+                //   <DeleteIcon />
+                // </IconButton>
+                null}
+                {/* Modal para seleção de lista */}
                 <Modal open={openModal} onClose={handleCloseModal}>
                   <Box sx={modalStyle}>
                     <Typography variant="h6" gutterBottom>
@@ -694,32 +638,13 @@ const Profile: React.FC = () => {
                     </Typography>
                     {lista.length ? (
                       <MuiList>
-                        {lista
-                          .filter((listas) => {
-                            const endDate = new Date(listas.endDate);
-                            const today = new Date();
-
-                            // Remove o horário das datas para comparar apenas o dia
-                            const endDateWithoutTime = new Date(
-                              endDate.getFullYear(),
-                              endDate.getMonth(),
-                              endDate.getDate()
-                            );
-                            const todayWithoutTime = new Date(
-                              today.getFullYear(),
-                              today.getMonth(),
-                              today.getDate()
-                            );
-
-                            // Mantém apenas listas com endDate >= hoje
-                            return endDateWithoutTime >= todayWithoutTime;
-                          })
-                          .map((listas, index) => (
+                        {lista.map((listas, index) => (
+                          <>
                             <ListItem
                               component="li"
                               key={index}
                               onClick={() =>
-                                listas._id && handleSelectList(listas._id)
+                                listas._id && handleSelectList(listas)
                               }
                               sx={{
                                 cursor: "pointer", // Cursor pointer para indicar que é clicável
@@ -732,26 +657,10 @@ const Profile: React.FC = () => {
                                 primary={listas.title}
                                 secondary={listas.owner.name}
                               />
-                              <FormControlLabel
-                                control={
-                                  <Checkbox
-                                    checked={isFree}
-                                    onChange={(event) => {
-                                      if (!isFree) {
-                                        setIsModalOpenTicket(true); // Se estava false, abre o modal
-                                      } else {
-                                        setisFree(false); // Se estava true, apenas desmarca
-                                      }
-                                    }}
-                                    sx={{
-                                      "& .MuiSvgIcon-root": { fontSize: 30 },
-                                    }}
-                                  />
-                                }
-                                label="Free"
-                              />
                             </ListItem>
-                          ))}
+                            {lista.length > 1 && <Divider />}
+                          </>
+                        ))}
                       </MuiList>
                     ) : (
                       <Typography
@@ -765,6 +674,132 @@ const Profile: React.FC = () => {
                   </Box>
                 </Modal>
               </Stack>
+              <Grid
+                container
+                spacing={2}
+                sx={{
+                  padding: "20px",
+                  marginTop: "20px",
+                  alignItems: "center",
+                }}
+                flexDirection={{ xs: "column", md: "row" }}
+              >
+                <Grid
+                  item
+                  xs={12}
+                  md={6}
+                  display={"flex"}
+                  justifyContent={"center"}
+                  sx={{ paddingLeft: "16px" }}
+                >
+                  {!isAmorChurch && profileData.profile === "Usuário" && (
+                    <Box sx={{ paddingTop: "16px", paddingLeft: "16px" }}>
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={isFree}
+                            onChange={(event) => {
+                              if (!isFree) {
+                                setIsModalOpenTicket(true); // Se estava false, abre o modal
+                              } else {
+                                setisFree(false); // Se estava true, apenas desmarca
+                              }
+                            }}
+                            sx={{
+                              "& .MuiSvgIcon-root": { fontSize: 30 },
+                            }}
+                          />
+                        }
+                        label="Free"
+                      />
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={isComum}
+                            onChange={(event) => {
+                              setIsComum(!isComum);
+                            }}
+                            sx={{
+                              "& .MuiSvgIcon-root": { fontSize: 30 },
+                            }}
+                          />
+                        }
+                        label="Sem Lista"
+                        disabled={selectedList !== null}
+                      />
+                    </Box>
+                  )}
+                </Grid>
+                <Divider />
+                <Grid
+                  item
+                  xs={12}
+                  md={6}
+                  flexDirection={"row"}
+                  sx={{ marginTop: "20px", maxWidth: "900px" }}
+                >
+                  {["Promotor", "Usuário"].includes(profileData.profile) && (
+                    <Box
+                      sx={{
+                        flexDirection: "row",
+                        display: "flex",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Typography
+                        gutterBottom
+                        sx={{
+                          display: "block",
+                          color: "#03624c",
+                          padding: "5px",
+                          fontSize: "13px",
+                        }}
+                      >
+                        {profileData.profile === "Promotor" && "R$"}
+                      </Typography>
+                      <Typography
+                        variant="h5"
+                        gutterBottom
+                        sx={{ display: "block", color: "#03624c" }}
+                      >
+                        {profileData.profile === "Promotor" ? (
+                          profileData.cash === 0 ? (
+                            "0,00"
+                          ) : (
+                            profileData.cash.toLocaleString("pt-BR", {
+                              minimumFractionDigits: 2,
+                            })
+                          )
+                        ) : (
+                          <TextField
+                            label="Valor da Entrada"
+                            type="number"
+                            fullWidth
+                            value={
+                              isFree
+                                ? 0
+                                : basePrice > 0
+                                  ? basePrice
+                                  : selectedEvent?.basePrice
+                            }
+                            onChange={(e) =>
+                              setBasePrice(Number(e.target.value))
+                            }
+                            InputProps={{
+                              startAdornment: (
+                                <InputAdornment position="start">
+                                  R$
+                                </InputAdornment>
+                              ),
+                            }}
+                            disabled={isFree}
+                          />
+                        )}
+                      </Typography>
+                    </Box>
+                  )}
+                </Grid>
+              </Grid>
               <Container
                 sx={{
                   display: "flex",
@@ -779,7 +814,7 @@ const Profile: React.FC = () => {
                 <Box
                   sx={{
                     width: "100%",
-                    maxWidth: "800px",
+                    maxWidth: "900px",
                     backgroundColor: "white",
                     borderRadius: "8px",
                     boxShadow: 3,
@@ -859,6 +894,7 @@ const Profile: React.FC = () => {
                           profileData.gender ? "" : "Campo obrigatório"
                         }
                         margin="normal"
+                        disabled={isAluno} // Desabilita o campo se for aluno
                       >
                         <MenuItem value="Feminino">Feminino</MenuItem>
                         <MenuItem value="Masculino">Masculino</MenuItem>
@@ -880,6 +916,7 @@ const Profile: React.FC = () => {
                             !profileData.profile ? "Campo obrigatório" : ""
                           } // Mensagem de erro
                           margin="normal"
+                          disabled={isAluno} // Desabilita o campo se for aluno
                         >
                           <MenuItem value="Diretoria">Diretoria</MenuItem>
                           <MenuItem value="Mentoria">Mentoria</MenuItem>
@@ -903,10 +940,18 @@ const Profile: React.FC = () => {
                           } // Mensagem de erro
                           margin="normal"
                         >
-                          <MenuItem value="Promotor">Promotor</MenuItem>
+                          {user?.profile === "Administrador" && (
+                            <MenuItem value="Promotor">Promotor</MenuItem>
+                          )}
                           <MenuItem value="Usuário">Usuário</MenuItem>
-                          <MenuItem value="Funcionário">Funcionário</MenuItem>
-                          <MenuItem value="Funcionário">Administrador</MenuItem>
+                          {user?.profile === "Administrador" && (
+                            <MenuItem value="Funcionário">Funcionário</MenuItem>
+                          )}
+                          {user?.profile === "Administrador" && (
+                            <MenuItem value="Administrador">
+                              Administrador
+                            </MenuItem>
+                          )}
                         </TextField>
                       </Grid>
                     )}
@@ -917,131 +962,168 @@ const Profile: React.FC = () => {
                 <Box
                   sx={{
                     width: "100%",
-                    maxWidth: "800px",
+                    maxWidth: "900px",
+                    height: "auto", // altura será controlada por min/max
+                    minHeight: "100px",
+                    maxHeight: "200px",
                     backgroundColor: "white",
                     borderRadius: "8px",
                     boxShadow: 3,
                     padding: "20px",
                     marginBottom: "20px",
+                    overflow: "auto", // adiciona scroll quando necessário
                   }}
                 >
                   <Typography variant="h6" gutterBottom>
                     Histórico de {isAmorChurch ? "Presença" : "Entradas"}
                   </Typography>
                   <MuiList>
-                    {profileData.history.length ? (
-                      profileData.history.map(
-                        (entry: IListHistory, index: number) => (
-                          <Grid
-                            container
-                            spacing={2}
-                            key={index}
-                            sx={{ mb: 2 }}
-                          >
-                            {/* Bloco 1: Título e Data */}
-                            <Grid
-                              item
-                              xs={12}
-                              sm={6}
-                              md={4}
-                              sx={{ height: "100%" }}
-                            >
-                              <Typography variant="h6" component="div">
-                                {entry.name}
-                              </Typography>
-                              <Typography
-                                variant="body2"
-                                color="text.secondary"
-                              >
-                                {new Date(entry.joinedAt).toLocaleDateString()}
-                              </Typography>
-                            </Grid>
-
-                            {/* Bloco 2: Checkboxes de Turnos (só aparece se isAmorChurch for true) */}
-                            {isAmorChurch && (
-                              <Grid
-                                item
-                                xs={12}
-                                sm={6}
-                                md={4}
-                                sx={{ height: "100%" }}
-                              >
-                                <FormGroup>
-                                  <FormControlLabel
-                                    control={
-                                      <Checkbox
-                                        icon={<BookmarkBorderIcon />}
-                                        checkedIcon={<Bookmark />}
-                                        checked={entry.firstRound || false}
-                                        onChange={(
-                                          event: React.ChangeEvent<HTMLInputElement>
-                                        ) => {
-                                          updateHistoryEntry(
-                                            index,
-                                            "firstRound",
-                                            event.target.checked
-                                          );
-                                        }}
-                                      />
-                                    }
-                                    label="1º Turno"
-                                  />
-                                  <FormControlLabel
-                                    control={
-                                      <Checkbox
-                                        icon={<BookmarkBorderIcon />}
-                                        checkedIcon={<Bookmark />}
-                                        checked={entry.secondRound || false}
-                                        onChange={(
-                                          event: React.ChangeEvent<HTMLInputElement>
-                                        ) => {
-                                          updateHistoryEntry(
-                                            index,
-                                            "secondRound",
-                                            event.target.checked
-                                          );
-                                        }}
-                                      />
-                                    }
-                                    label="2º Turno"
-                                  />
-                                </FormGroup>
-                              </Grid>
-                            )}
-
-                            {/* Bloco 3: Campo de Nota (só aparece se for exame) */}
-                            {isAmorChurch && entry.isExam && (
-                              <Grid
-                                item
-                                xs={12}
-                                sm={6}
-                                md={4}
-                                sx={{ height: "100%" }}
-                              >
-                                <TextField
-                                  fullWidth
-                                  id="outlined-number"
-                                  label="Nota da Prova"
-                                  type="number"
-                                  InputLabelProps={{
-                                    shrink: true,
-                                  }}
-                                  value={entry.examScore || ""}
-                                  onChange={(
-                                    event: React.ChangeEvent<HTMLInputElement>
-                                  ) => {
-                                    updateHistoryEntry(
-                                      index,
-                                      "examScore",
-                                      parseFloat(event.target.value)
-                                    );
-                                  }}
-                                />
-                              </Grid>
-                            )}
-                          </Grid>
+                    {userHistories?.length ? (
+                      userHistories
+                        .sort(
+                          (a, b) =>
+                            new Date(b.joinedAt).getTime() -
+                            new Date(a.joinedAt).getTime()
                         )
-                      )
+                        .map((history: History, index: number) => {
+                          const userEntry = history.users?.find(
+                            (user) =>
+                              user.id._id?.toString() ===
+                              (profileData._id || "")
+                          );
+                          const isCurrentDay =
+                            new Date(history.joinedAt).toDateString() ===
+                            new Date().toDateString();
+                          return (
+                            <>
+                              <Grid
+                                container
+                                spacing={2}
+                                key={index}
+                                sx={{ mb: 2, marginTop: "5px" }}
+                              >
+                                {/* Bloco 1: Título e Data */}
+                                <Grid
+                                  item
+                                  xs={12}
+                                  sm={6}
+                                  md={4}
+                                  sx={{ height: "100%" }}
+                                >
+                                  <Typography variant="body2" component="div">
+                                    {history.name}
+                                  </Typography>
+                                  <Typography
+                                    variant="body2"
+                                    color="text.secondary"
+                                  >
+                                    {new Date(
+                                      history.listDate ||
+                                        new Date().toISOString()
+                                    ).toLocaleDateString()}
+                                  </Typography>
+                                </Grid>
+
+                                {/* Bloco 2: Checkboxes de Turnos (só aparece se isAmorChurch for true) */}
+                                {isAmorChurch && (
+                                  <Grid
+                                    item
+                                    xs={12}
+                                    sm={6}
+                                    md={4}
+                                    sx={{ height: "100%" }}
+                                  >
+                                    <FormGroup sx={{ flexDirection: "row" }}>
+                                      <FormControlLabel
+                                        control={
+                                          <Checkbox
+                                            icon={<BookmarkBorderIcon />}
+                                            checkedIcon={<Bookmark />}
+                                            checked={
+                                              userEntry?.firstRound === true
+                                                ? userEntry?.firstRound
+                                                : firstRound
+                                            }
+                                            onChange={(
+                                              event: React.ChangeEvent<HTMLInputElement>
+                                            ) => {
+                                              setFirstRound(
+                                                event.target.checked
+                                              );
+                                              if (history._id) {
+                                                setHistoryId(history._id);
+                                              }
+                                            }}
+                                          />
+                                        }
+                                        label="1º Turno"
+                                        disabled={isAluno || !isCurrentDay}
+                                      />
+                                      <FormControlLabel
+                                        control={
+                                          <Checkbox
+                                            icon={<BookmarkBorderIcon />}
+                                            checkedIcon={<Bookmark />}
+                                            checked={
+                                              userEntry?.secondRound === true
+                                                ? userEntry?.secondRound
+                                                : secondRound
+                                            }
+                                            onChange={(
+                                              event: React.ChangeEvent<HTMLInputElement>
+                                            ) => {
+                                              setSecondRound(
+                                                event.target.checked
+                                              );
+                                              if (history._id) {
+                                                setHistoryId(history._id);
+                                              }
+                                            }}
+                                          />
+                                        }
+                                        label="2º Turno"
+                                        disabled={isAluno || !isCurrentDay}
+                                      />
+                                    </FormGroup>
+                                  </Grid>
+                                )}
+
+                                {/* Bloco 3: Campo de Nota (só aparece se for exame) */}
+                                {isAmorChurch && history.isExam && (
+                                  <Grid
+                                    item
+                                    xs={12}
+                                    sm={6}
+                                    md={4}
+                                    sx={{ height: "100%" }}
+                                  >
+                                    <TextField
+                                      fullWidth
+                                      id="outlined-number"
+                                      label="Nota da Prova"
+                                      type="number"
+                                      InputLabelProps={{
+                                        shrink: true,
+                                      }}
+                                      value={userEntry?.examScore ?? examScore}
+                                      onChange={(
+                                        event: React.ChangeEvent<HTMLInputElement>
+                                      ) => {
+                                        setExameScore(
+                                          parseFloat(event.target.value)
+                                        );
+                                        if (history._id)
+                                          setHistoryId(history._id);
+                                      }}
+                                      disabled={isAluno || !isCurrentDay}
+                                    />
+                                  </Grid>
+                                )}
+                              </Grid>
+                              <Divider />
+                            </>
+                          );
+                        })
                     ) : (
                       <Typography
                         variant="subtitle1"
@@ -1052,15 +1134,323 @@ const Profile: React.FC = () => {
                       </Typography>
                     )}
                   </MuiList>
+                  <MuiList>
+                    {profileData.history?.length
+                      ? profileData.history
+                          .sort(
+                            (a, b) =>
+                              new Date(b.joinedAt).getTime() -
+                              new Date(a.joinedAt).getTime()
+                          )
+                          .map((history: History2, index: number) => {
+                            const isCurrentDay =
+                              new Date(history.joinedAt).toDateString() ===
+                              new Date().toDateString();
+                            return (
+                              <>
+                                <Grid
+                                  container
+                                  spacing={2}
+                                  key={index}
+                                  sx={{ mb: 2, marginTop: "5px" }}
+                                >
+                                  {/* Bloco 1: Título e Data */}
+                                  <Grid
+                                    item
+                                    xs={12}
+                                    sm={6}
+                                    md={4}
+                                    sx={{ height: "100%" }}
+                                  >
+                                    <Typography variant="body2" component="div">
+                                      {history.name}
+                                    </Typography>
+                                    <Typography
+                                      variant="body2"
+                                      color="text.secondary"
+                                    >
+                                      {new Date(
+                                        history.joinedAt
+                                      ).toLocaleDateString()}
+                                    </Typography>
+                                  </Grid>
+
+                                  {/* Bloco 2: Checkboxes de Turnos (só aparece se isAmorChurch for true) */}
+                                  {isAmorChurch && (
+                                    <Grid
+                                      item
+                                      xs={12}
+                                      sm={6}
+                                      md={4}
+                                      sx={{ height: "100%" }}
+                                    >
+                                      <FormGroup sx={{ flexDirection: "row" }}>
+                                        <FormControlLabel
+                                          control={
+                                            <Checkbox
+                                              icon={<BookmarkBorderIcon />}
+                                              checkedIcon={<Bookmark />}
+                                              checked={
+                                                history?.firstRound ??
+                                                firstRound
+                                              }
+                                              onChange={(
+                                                event: React.ChangeEvent<HTMLInputElement>
+                                              ) => {
+                                                setFirstRound(
+                                                  event.target.checked
+                                                );
+                                                if (history._id) {
+                                                  setHistoryId(history._id);
+                                                }
+                                              }}
+                                            />
+                                          }
+                                          label="1º Turno"
+                                          disabled={isAluno || !isCurrentDay}
+                                        />
+                                        <FormControlLabel
+                                          control={
+                                            <Checkbox
+                                              icon={<BookmarkBorderIcon />}
+                                              checkedIcon={<Bookmark />}
+                                              checked={
+                                                history?.secondRound ??
+                                                secondRound
+                                              }
+                                              onChange={(
+                                                event: React.ChangeEvent<HTMLInputElement>
+                                              ) => {
+                                                setSecondRound(
+                                                  event.target.checked
+                                                );
+                                                if (history._id) {
+                                                  setHistoryId(history._id);
+                                                }
+                                              }}
+                                            />
+                                          }
+                                          label="2º Turno"
+                                          disabled={isAluno || !isCurrentDay}
+                                        />
+                                      </FormGroup>
+                                    </Grid>
+                                  )}
+
+                                  {/* Bloco 3: Campo de Nota (só aparece se for exame) */}
+                                  {isAmorChurch && history.isExam && (
+                                    <Grid
+                                      item
+                                      xs={12}
+                                      sm={6}
+                                      md={4}
+                                      sx={{ height: "100%" }}
+                                    >
+                                      <TextField
+                                        fullWidth
+                                        id="outlined-number"
+                                        label="Nota da Prova"
+                                        type="number"
+                                        InputLabelProps={{
+                                          shrink: true,
+                                        }}
+                                        value={history?.examScore ?? examScore}
+                                        onChange={(
+                                          event: React.ChangeEvent<HTMLInputElement>
+                                        ) => {
+                                          setExameScore(
+                                            parseFloat(event.target.value)
+                                          );
+                                          if (history._id)
+                                            setHistoryId(history._id);
+                                        }}
+                                        disabled={isAluno || !isCurrentDay}
+                                      />
+                                    </Grid>
+                                  )}
+                                </Grid>
+                                <Divider />
+                              </>
+                            );
+                          })
+                      : null}
+                  </MuiList>
                 </Box>
 
+                {/* Card de Anexo de material */}
+                {isAmorChurch && (
+                  <Box
+                    sx={{
+                      width: "100%",
+                      maxWidth: "900px",
+                      height: "auto", // altura será controlada por min/max
+                      minHeight: "100px",
+                      maxHeight: "200px",
+                      backgroundColor: "white",
+                      borderRadius: "8px",
+                      boxShadow: 3,
+                      padding: "20px",
+                      marginBottom: "20px",
+                      overflow: "auto", // adiciona scroll quando necessário
+                    }}
+                  >
+                    <Typography variant="h6" gutterBottom>
+                      Materiais de reposição
+                    </Typography>
+                    <MuiList>
+                      {replacement?.length &&
+                        replacement.map((item, index: number) => {
+                          return (
+                            <Grid
+                              container
+                              spacing={2}
+                              key={index}
+                              sx={{ mb: 2 }}
+                            >
+                              {/* Bloco 1: Título */}
+                              <Grid
+                                item
+                                xs={12}
+                                sm={6}
+                                md={4}
+                                sx={{ height: "100%" }}
+                              >
+                                <Typography variant="h6" component="div">
+                                  {item.title}
+                                </Typography>
+                              </Grid>
+
+                              {/* Bloco 2: Botões para cada link */}
+                              <Grid
+                                item
+                                xs={12}
+                                sm={6}
+                                md={8}
+                                sx={{ height: "100%" }}
+                              >
+                                <Stack direction="row" spacing={2}>
+                                  {item.link.map((link, linkIndex) => (
+                                    <Button
+                                      key={linkIndex}
+                                      variant="outlined"
+                                      endIcon={<InsertLink />}
+                                      onClick={() =>
+                                        window.open(link, "_blank")
+                                      }
+                                      sx={{ textTransform: "none" }}
+                                    >
+                                      Link {linkIndex + 1}
+                                    </Button>
+                                  ))}
+                                </Stack>
+                              </Grid>
+                            </Grid>
+                          );
+                        })}
+                    </MuiList>
+                  </Box>
+                )}
+
+                {/* Card de Envio de Documentos */}
+                {isAmorChurch && (
+                  <Box
+                    sx={{
+                      width: "100%",
+                      maxWidth: "900px",
+                      height: "auto",
+                      minHeight: "100px",
+                      maxHeight: "300px", // Aumentei um pouco para melhor visualização
+                      backgroundColor: "white",
+                      borderRadius: "8px",
+                      boxShadow: 3,
+                      padding: "20px",
+                      marginBottom: "20px",
+                      overflow: "auto",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "16px",
+                    }}
+                  >
+                    <Typography variant="h6" gutterBottom>
+                      Enviar Documentos
+                    </Typography>
+
+                    {/* Área de Upload */}
+                    <Box
+                      component="label"
+                      htmlFor="file-upload"
+                      sx={{
+                        border: "2px dashed #ccc",
+                        borderRadius: "4px",
+                        padding: "20px",
+                        textAlign: "center",
+                        cursor: "pointer",
+                        "&:hover": {
+                          borderColor: "primary.main",
+                          backgroundColor: "action.hover",
+                        },
+                      }}
+                    >
+                      <Stack alignItems="center" spacing={2}>
+                        <DriveFolderUpload color="primary" fontSize="large" />
+                        <Typography variant="body1">
+                          Clique para selecionar ou arraste arquivos aqui
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          (Formatos aceitos: PDF, JPG, PNG)
+                        </Typography>
+                      </Stack>
+                      <input
+                        id="file-upload"
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png"
+                        multiple
+                        style={{ display: "none" }}
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files.length > 0) {
+                            // Aqui você pode armazenar os arquivos no estado
+                            const filesArray = Array.from(e.target.files);
+                            // setUploadedFiles(filesArray); // Implemente este estado depois
+                          }
+                        }}
+                      />
+                    </Box>
+
+                    {/* Lista de arquivos selecionados (aparecerá quando houver arquivos) */}
+                    {/* {uploadedFiles?.length > 0 && (
+    <Box>
+      <Typography variant="subtitle2" gutterBottom>
+        Arquivos selecionados:
+      </Typography>
+      <List dense>
+        {uploadedFiles.map((file, index) => (
+          <ListItem key={index}>
+            <ListItemIcon>
+              {file.type.includes('pdf') ? <PictureAsPdfIcon /> : <ImageIcon />}
+            </ListItemIcon>
+            <ListItemText
+              primary={file.name}
+              secondary={`${(file.size / 1024).toFixed(2)} KB`}
+            />
+            <IconButton edge="end" onClick={() => handleRemoveFile(index)}>
+              <DeleteIcon />
+            </IconButton>
+          </ListItem>
+        ))}
+      </List>
+    </Box>
+  )} */}
+                  </Box>
+                )}
+
+                {/* Card de Adicionar Incidentes */}
                 {isAmorChurch ? null : (
                   <>
                     {/* Card histórico de Incidentes */}
                     <Box
                       sx={{
                         width: "100%",
-                        maxWidth: "800px",
+                        maxWidth: "900px",
                         backgroundColor: "white",
                         borderRadius: "8px",
                         boxShadow: 3,
@@ -1113,7 +1503,7 @@ const Profile: React.FC = () => {
                     <Box
                       sx={{
                         width: "100%",
-                        maxWidth: "800px",
+                        maxWidth: "900px",
                         backgroundColor: "white",
                         borderRadius: "8px",
                         boxShadow: 3,
@@ -1166,20 +1556,29 @@ const Profile: React.FC = () => {
                     </Box>
                   </>
                 )}
-                <Button
-                  variant="contained"
-                  disabled={errors}
-                  sx={{
-                    backgroundColor: "#26d07c",
-                    marginTop: "20px",
-                    "&:hover": {
-                      backgroundColor: "#1fa968",
-                    },
-                  }}
-                  onClick={handleSaveUser}
-                >
-                  Salvar
-                </Button>
+                {!isAluno && (
+                  <Button
+                    variant="contained"
+                    disabled={
+                      errors ||
+                      (!isAmorChurch &&
+                        !selectedEvent &&
+                        !isFree &&
+                        !isComum &&
+                        profileData.profile === "Usuário")
+                    }
+                    sx={{
+                      backgroundColor: "#26d07c",
+                      marginTop: "20px",
+                      "&:hover": {
+                        backgroundColor: "#1fa968",
+                      },
+                    }}
+                    onClick={handleSaveUser}
+                  >
+                    Checkin
+                  </Button>
+                )}
               </Container>
               <Snackbar
                 open={snackbarOpen}
@@ -1187,6 +1586,7 @@ const Profile: React.FC = () => {
                 onClose={handleCloseSnackbar}
               >
                 <Alert
+                  variant="filled"
                   onClose={handleCloseSnackbar}
                   severity={snackbarSeverity}
                   sx={{ width: "100%" }}
@@ -1239,6 +1639,7 @@ const Profile: React.FC = () => {
                   backgroundColor: "#1fa968",
                 },
               }}
+              disabled={!motivo}
             >
               Confirmar
             </Button>

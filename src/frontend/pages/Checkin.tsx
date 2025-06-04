@@ -18,6 +18,8 @@ import {
   Dialog,
   Slide,
   SlideProps,
+  Chip,
+  CircularProgress,
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import {
@@ -26,16 +28,12 @@ import {
   useLogout,
   validateCPF,
 } from "../utils";
-import QrCodeReader from "../components";
+import { QrCodeReader } from "../components";
 import QrCodeIcon from "@mui/icons-material/QrCode";
-import MenuIcon from "@mui/icons-material/Menu";
 import useMediaQuery from "@mui/material/useMediaQuery";
-import {
-  AccountCircle,
-  Close as CloseIcon,
-  CropFree,
-} from "@mui/icons-material";
+import { Close as CloseIcon, CropFree } from "@mui/icons-material";
 import { fetchQRCode } from "../services";
+import { CustomAppBar } from "../components/index";
 
 const Checkin: React.FC = () => {
   const [cpf, setCpf] = useState<string>("");
@@ -53,6 +51,10 @@ const Checkin: React.FC = () => {
   const [showScanner, setShowScanner] = useState(false);
   const isDesktop = useMediaQuery("(min-width: 768px)");
   const isAmorChurch = user?.client_id === "amorChurch";
+  const isauthorized = user
+    ? ["Diretoria", "Mentoria", "Administrador"].includes(user.profile)
+    : false;
+  const isAluno = user?.profile === "Aluno";
 
   const handleLista = () => {
     navigate("/CriarLista");
@@ -104,6 +106,10 @@ const Checkin: React.FC = () => {
     }
   };
 
+  const handleToProfile = () => {
+    navigate(`/profile?cpf=${user?.cpf}`);
+  };
+
   useEffect(() => {
     if (qrCodeLink) navigate(`/profile?cpf=${qrCodeLink}`);
   }, [qrCodeLink]);
@@ -111,79 +117,16 @@ const Checkin: React.FC = () => {
   return (
     <>
       {/* Barra superior */}
-      <AppBar
-        position="static"
-        sx={{
-          backgroundColor: "#00df81",
-          height: "65px",
-          justifyContent: "center",
-          paddingInline: { xl: 10, md: 5, sm: "20px" },
-        }}
-      >
-        <Toolbar
-          sx={{
-            justifyContent: "space-between",
-            paddingInline: { xl: 10, md: 5, sm: 0 },
-          }}
-        >
-          <Box
-            component="img"
-            src="/logo-top-bar-bco.png"
-            alt="Logo"
-            sx={{
-              width: "120px",
-              height: "45px",
-              marginRight: { xs: "10px", sm: "20px" }, // Estilo responsivo
-            }}
-          />
-
-          <Box sx={{ flexGrow: 0 }} flexDirection="row" display={"flex"}>
-            {isDesktop && (
-              <Typography variant="h6" sx={{ marginRight: "20px" }}>
-                {user?.name}
-              </Typography>
-            )}
-            <Tooltip title="Open settings">
-              <IconButton onClick={handleOpenUserMenu} sx={{ p: 0 }}>
-                {isDesktop ? <AccountCircle /> : <MenuIcon />}
-              </IconButton>
-            </Tooltip>
-            <Menu
-              sx={{ mt: "45px" }}
-              id="menu-appbar"
-              anchorEl={anchorElUser}
-              anchorOrigin={{
-                vertical: "top",
-                horizontal: "right",
-              }}
-              keepMounted
-              transformOrigin={{
-                vertical: "top",
-                horizontal: "right",
-              }}
-              open={Boolean(anchorElUser)}
-              onClose={handleCloseUserMenu}
-            >
-              {settings.map((setting) => (
-                <MenuItem
-                  key={setting}
-                  onClick={() => {
-                    if (setting === "Logout") {
-                      logout(); // Chama a função logout
-                    } else {
-                      handleCloseUserMenu(); // Chama a função handleCloseUserMenu
-                    }
-                  }}
-                >
-                  <Typography sx={{ textAlign: "center" }}>
-                    {setting}
-                  </Typography>
-                </MenuItem>
-              ))}
-            </Menu>
-          </Box>
-        </Toolbar>
-      </AppBar>
+      <CustomAppBar
+        isDesktop={isDesktop}
+        user={user}
+        settings={settings}
+        handleOpenUserMenu={handleOpenUserMenu}
+        handleCloseUserMenu={handleCloseUserMenu}
+        anchorElUser={anchorElUser}
+        logout={logout}
+        handleToProfile={handleToProfile}
+      />
 
       {/* Corpo */}
       <Container
@@ -214,7 +157,9 @@ const Checkin: React.FC = () => {
               marginTop={{ xs: "50px" }}
             >
               {isAmorChurch
-                ? "Entre com as credenciais para confirmar presença"
+                ? user.profile === "Aluno"
+                  ? `Olá ${user?.name.split(" ")[0]} 💎`
+                  : "Entre com as credenciais para confirmar presença"
                 : "Digite o CPF para fazer o check-in"}
             </Typography>
           </Grid>
@@ -238,15 +183,17 @@ const Checkin: React.FC = () => {
                 padding: "32px", // Espaçamento interno
               }}
             >
-              <TextField
-                label="Insira um CPF"
-                variant="outlined"
-                fullWidth
-                value={cpf}
-                onChange={editaCpf}
-                error={error}
-                helperText={error ? "CPF inválido ou não encontrado." : ""}
-              />
+              {!isAluno && (
+                <TextField
+                  label="Insira um CPF"
+                  variant="outlined"
+                  fullWidth
+                  value={cpf}
+                  onChange={editaCpf}
+                  error={error}
+                  helperText={error ? "CPF inválido ou não encontrado." : ""}
+                />
+              )}
               <Grid
                 container
                 sx={{
@@ -256,36 +203,64 @@ const Checkin: React.FC = () => {
                 }}
               >
                 <Grid width={"100%"}>
-                  <Button
-                    variant="contained"
-                    sx={{
-                      backgroundColor: "#26d07c",
-                      marginTop: "20px",
-                      "&:hover": { backgroundColor: "#1fa968" },
-                      width: "100%", // Botão com largura total
-                      alignSelf: "flex-start",
-                    }}
-                    disabled={cpf.length !== 14 || loading}
-                    onClick={handleCheck}
-                  >
-                    {loading ? "Verificando..." : "Checar"}
-                  </Button>
+                  {!isAluno && (
+                    <Button
+                      variant="contained"
+                      sx={{
+                        backgroundColor: "#26d07c",
+                        marginTop: "20px",
+                        "&:hover": { backgroundColor: "#1fa968" },
+                        width: "100%", // Botão com largura total
+                        alignSelf: "flex-start",
+                      }}
+                      disabled={cpf.length !== 14 || loading}
+                      onClick={handleCheck}
+                    >
+                      {loading ? "Verificando..." : "Checar"}
+                    </Button>
+                  )}
+                  {isAluno && (
+                    <Button
+                      variant="contained"
+                      sx={{
+                        backgroundColor: "#26d07c",
+                        marginTop: "20px",
+                        "&:hover": { backgroundColor: "#1fa968" },
+                        width: "100%", // Botão com largura total
+                        alignSelf: "flex-start",
+                      }}
+                      onClick={handleToProfile}
+                    >
+                      {loading ? (
+                        <CircularProgress
+                          sx={{
+                            color: "white",
+                          }}
+                          size={24}
+                        />
+                      ) : (
+                        "ir para Perfil"
+                      )}
+                    </Button>
+                  )}
                 </Grid>
-                <Grid width={"100%"}>
-                  <Button
-                    variant="text"
-                    sx={{
-                      marginTop: "20px",
-                      "&:hover": { backgroundColor: "#caffd2" },
-                      width: "100%", // Botão com largura total
-                      alignSelf: "flex-start",
-                      color: "#021b1a",
-                    }}
-                    onClick={handleLista}
-                  >
-                    {isAmorChurch ? "Gerenciar aulas" : "Gerenciar listas"}
-                  </Button>
-                </Grid>
+                {isauthorized && (
+                  <Grid width={"100%"}>
+                    <Button
+                      variant="text"
+                      sx={{
+                        marginTop: "20px",
+                        "&:hover": { backgroundColor: "#caffd2" },
+                        width: "100%", // Botão com largura total
+                        alignSelf: "flex-start",
+                        color: "#021b1a",
+                      }}
+                      onClick={handleLista}
+                    >
+                      {isAmorChurch ? "Gerenciar aulas" : "Gerenciar listas"}
+                    </Button>
+                  </Grid>
+                )}
                 {/* GeraR QR Code */}
                 {/* <Grid width={"100%"}>
                   <Button
